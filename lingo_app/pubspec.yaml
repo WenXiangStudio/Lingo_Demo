@@ -1,0 +1,73 @@
+name: lingo_app
+description: "LingoDemo - A vocabulary learning app."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # Local database
+  drift: ^2.21.0
+  sqlite3_flutter_libs: ^0.5.28
+
+  # HTTP
+  dio: ^5.7.0
+  crypto: ^3.0.6
+
+  # TTS (local + cloud)
+  sherpa_onnx: ^1.13.0
+  audioplayers: ^6.1.0
+
+  # Microphone recording
+  record: ^6.1.2
+
+  # File picking
+  file_picker: ^8.1.6
+
+  # CSV parsing
+  csv: ^6.0.0
+
+  # Immutable models
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # UI
+  flutter_animate: ^4.5.2
+
+  # Settings persistence
+  shared_preferences: ^2.3.4
+
+  # Path provider for database file
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.14
+  drift_dev: ^2.21.0
+  freezed: ^2.5.8
+  json_serializable: ^6.9.4
+  riverpod_generator: ^2.6.3
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/word_books/
+    - assets/tts_model/

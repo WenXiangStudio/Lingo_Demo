@@ -369,8 +369,8 @@ class TtsService {
         await _initSupertonic();
       }
       final speed = await _settingsRepo.getTtsSpeed();
-      // Preprocess: single words get trailing "." for clean ending boundary
-      final processed = SupertonicTtsEngine.preprocessText(text);
+      // Bare words need an explicit boundary to avoid Supertonic tail noise.
+      final processed = SupertonicTtsEngine.preprocessSingleWord(text);
       final audio = _supertonic!.synthesize(
         processed,
         speed: speed,
@@ -1278,7 +1278,7 @@ class TtsService {
   String _stableCacheKey(String text, String lang, String provider) {
     final normalizedText = _normalizeCacheText(text);
     final cacheText = provider == 'supertonic'
-        ? 'v8\n$normalizedText'
+        ? 'v9\n$normalizedText'
         : normalizedText;
     var hash = 0xcbf29ce484222325;
     for (final byte in utf8.encode('$provider\n$lang\n$cacheText')) {
@@ -1411,6 +1411,7 @@ class TtsService {
       }
       completer.complete();
     }
+
     _completePlayback = complete;
 
     sub = _player!.onPlayerComplete.listen((_) => complete());
@@ -1460,8 +1461,22 @@ class TtsService {
         switch (provider) {
           case 'supertonic':
             if (_supertonic?.isInitialized != true) await _initSupertonic();
-            final audio = _supertonic!.synthesize(normalizedText, lang: lang);
-            final wavBytes = await _supertonic!.samplesToWav(audio.samples);
+            final speed = await _settingsRepo.getTtsSpeed();
+            final processed = SupertonicTtsEngine.preprocessSingleWord(
+              normalizedText,
+            );
+            final audio = _supertonic!.synthesize(
+              processed,
+              speed: speed,
+              numSteps: 15,
+              lang: lang,
+            );
+            final cleaned = SupertonicTtsEngine.applyTailFadeOut(
+              audio.samples,
+              audio.sampleRate,
+              fadeDurationMs: 80,
+            );
+            final wavBytes = await _supertonic!.samplesToWav(cleaned);
             await _cacheAudio(normalizedText, lang, 'supertonic', wavBytes);
             success++;
             break;

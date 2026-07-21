@@ -56,10 +56,7 @@ void main() {
       expect(AnswerChecker.isFillAnswerCorrect('盛满', '装满;盛满'), isTrue);
       expect(AnswerChecker.isAnswerCorrect(' v. 装满 ', 'v.装满；占满'), isTrue);
       expect(AnswerChecker.isAnswerCorrect('微小的', 'adj. 微小的'), isTrue);
-      expect(
-        AnswerChecker.missingMeanings('don’t', "don't；can't"),
-        ["can't"],
-      );
+      expect(AnswerChecker.missingMeanings('don’t', "don't；can't"), ["can't"]);
     });
   });
 
@@ -76,6 +73,16 @@ void main() {
         SupertonicTtsEngine.preprocessText('“Don’t”； stop'),
         '"Don\'t", stop',
       );
+    });
+
+    test('adds a terminal boundary to a bare word', () {
+      expect(SupertonicTtsEngine.preprocessSingleWord('tame'), 'tame.');
+      expect(SupertonicTtsEngine.preprocessSingleWord('Don’t'), "Don't.");
+      expect(
+        SupertonicTtsEngine.preprocessSingleWord('ice cream'),
+        'ice cream',
+      );
+      expect(SupertonicTtsEngine.preprocessSingleWord('tame!'), 'tame!');
     });
 
     test('splits long form text into bounded chunks', () {

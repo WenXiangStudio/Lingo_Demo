@@ -29,7 +29,8 @@ class SupertonicTtsEngine {
   ///   onnx/duration_predictor.onnx, onnx/text_encoder.onnx, etc.
   ///   onnx/unicode_indexer.bin (binary format, converted from HF JSON)
   ///   voice_styles/M1.bin (binary format, converted from HF JSON)
-  Future<void> initialize(String modelDir, {int numThreads = 2}) async {
+  Future<void> initialize(String modelDir, {int? numThreads}) async {
+    final threadCount = numThreads ?? recommendedNumThreads;
     final config = OfflineTtsModelConfig(
       supertonic: OfflineTtsSupertonicModelConfig(
         durationPredictor: '$modelDir/onnx/duration_predictor.onnx',
@@ -40,13 +41,21 @@ class SupertonicTtsEngine {
         unicodeIndexer: '$modelDir/onnx/unicode_indexer.bin',
         voiceStyle: '$modelDir/voice_styles/M1.bin',
       ),
-      numThreads: numThreads,
+      numThreads: threadCount,
       provider: 'cpu',
     );
 
     _tts = OfflineTts(OfflineTtsConfig(model: config));
     _sampleRate = _tts!.sampleRate;
     _initialized = true;
+  }
+
+  /// Supertonic's FP32 model is costly on a phone. Windows keeps the existing
+  /// conservative two-thread profile; Android can use up to four cores to
+  /// reduce tap-to-speech latency without trying to occupy every CPU core.
+  static int get recommendedNumThreads {
+    if (!Platform.isAndroid) return 2;
+    return Platform.numberOfProcessors.clamp(2, 4).toInt();
   }
 
   /// Synthesize [text] and return raw PCM audio samples.
@@ -102,6 +111,18 @@ class SupertonicTtsEngine {
         .replaceAll(RegExp(r'[ \t\r\f\v]+'), ' ')
         .replaceAll(RegExp(r' *\n *'), '\n')
         .trim();
+  }
+
+  /// Give an isolated word an explicit ending boundary. Supertonic often
+  /// produces a breath, sigh, or trailing artifact when a bare word has no
+  /// terminal punctuation. Multi-word phrases retain their original form.
+  static String preprocessSingleWord(String text) {
+    final processed = preprocessText(text);
+    if (processed.isEmpty || processed.contains(RegExp(r'\s'))) {
+      return processed;
+    }
+    if (RegExp(r'[.!?。！？]$').hasMatch(processed)) return processed;
+    return '$processed.';
   }
 
   /// Split paragraph-like input into bounded chunks for Supertonic generation.

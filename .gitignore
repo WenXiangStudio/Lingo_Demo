@@ -33,3 +33,6 @@
 
 # Local screenshots/debug artifacts
 screenshot.png
+
+# Large TTS model binaries (installed from D:\LingoDemoData or downloaded at runtime)
+lingo_app/assets/tts_model/onnx/*.onnx

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "agent-mem": {
+      "command": "python",
+      "args": [
+        ".agents/mcp/agent_mem_mcp.py",
+        "--root",
+        "."
+      ]
+    }
+  }
+}

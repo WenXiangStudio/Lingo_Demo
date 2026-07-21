@@ -44,6 +44,25 @@ $env:PUB_CACHE='D:\PubCache'; $env:APPDATA='D:\LingoDemo\.dart_appdata'; $env:LO
 flutter build windows --debug
 ```
 
+## Flutter Tooling Rule
+
+- On this machine, `flutter.bat` / `dart.bat` wrapper commands often hang inside the sandbox while trying to access tool state outside the workspace.
+- For Flutter wrapper operations, prefer running outside the sandbox with approval instead of waiting for a long timeout:
+  - `flutter --version`
+  - `flutter analyze`
+  - `flutter build`
+  - `flutter test`
+  - `dart format` when invoked through `flutter\bin\dart.bat`
+- Always set D-drive environment variables before invoking Flutter/Dart tools:
+  - `APPDATA=D:\LingoDemo\.dart_appdata`
+  - `LOCALAPPDATA=D:\LingoDemo\.dart_localappdata`
+  - `PUB_CACHE=D:\PubCache`
+  - `PUB_HOSTED_URL=https://pub.flutter-io.cn` when package resolution/download may occur.
+- Direct Dart SDK calls can run in the sandbox if these env vars are set:
+  - `D:\FlutterSDK\flutter\bin\cache\dart-sdk\bin\dart.exe format ...`
+  - `D:\FlutterSDK\flutter\bin\cache\dart-sdk\bin\dart.exe analyze ...`
+- If a Flutter wrapper command is needed and no approved prefix exists yet, request escalation immediately with a concise justification; do not first spend several minutes waiting for sandbox timeout.
+
 ## Analyzer Troubleshooting
 
 If `flutter analyze` / `dart analyze` times out on this project:
@@ -56,18 +75,37 @@ If `flutter analyze` / `dart analyze` times out on this project:
 <!-- BEGIN AGENT-CONTEXT -->
 ## Agent Task Context
 
-This project uses `.agents/` for compact cross-window and cross-agent handoff state.
+This project uses `agent-mem` and `.agents/` for compact cross-window and cross-agent project memory.
 
 - `AGENTS.md` is stable project guidance and may be loaded automatically.
 - `.agents/project-state.md` stores durable cross-task facts and is injected when `.agents/context-mode` is `auto`.
-- `.agents/tasks/<task>/state.md` is task state and is injected only when `.agents/context-mode` is `auto`.
+- `.agents/tasks/<task>/state.md` is the authoritative task state and is injected only when `.agents/context-mode` is `auto`.
+- `.agents/events/*.jsonl` stores structured memory events; user-level SQLite FTS5 indexing lives under `~/.agent-mem/` when writable.
 - `.agents/tasks/<task>/handoffs/` stores historical handoff notes. Do not read all handoffs by default.
-- `.\agent-task.ps1 new <task-name>` carries forward useful sections from the previously active task state.
-- Before switching windows, compacting context, or changing agents, update the active task state and durable project state when facts should carry across tasks.
+- `.\agent-mem.ps1 task new <task-name>` carries forward useful sections from the previously active task state.
+- `.\agent-mem.ps1 enter <tool>` prepares state, validates it, and launches supported terminal tools.
+- `.\agent-mem.ps1 prompt <resume|handoff|new-task>` prints copyable in-agent prompt templates.
+- `.\am.ps1` is a short wrapper for `.\agent-mem.ps1`.
+- `.\agent-task.ps1` remains as a compatibility wrapper for older commands.
+- Before switching windows, compacting context, or changing agents, update the active task state.
+- Validate state structure with `.\agent-mem.ps1 validate` after manual edits.
 
 Use:
 
 ```powershell
+.\agent-mem.ps1 status
+.\agent-mem.ps1 enter codex
+.\agent-mem.ps1 prompt handoff --to claude-code --copy
+.\agent-mem.ps1 task use <task-name>
+.\agent-mem.ps1 task new <task-name>
+.\agent-mem.ps1 task off
+.\agent-mem.ps1 handoff --summary "handoff summary"
+.\agent-mem.ps1 remember "durable project fact"
+.\agent-mem.ps1 remember --global "durable user fact"
+.\agent-mem.ps1 search "query"
+.\agent-mem.ps1 validate
+
+# Legacy wrapper:
 .\agent-task.ps1 status
 .\agent-task.ps1 use <task-name>
 .\agent-task.ps1 new <task-name>

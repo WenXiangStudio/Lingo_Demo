@@ -411,6 +411,20 @@ class AppDatabase extends _$AppDatabase {
     return query.map((row) => row.readTable(words)).get();
   }
 
+  Future<List<Word>> getWordsForLists(List<int> listIds) {
+    if (listIds.isEmpty) return Future.value(const []);
+    final query =
+        select(
+            listWords,
+          ).join([innerJoin(words, words.id.equalsExp(listWords.wordId))])
+          ..where(listWords.listId.isIn(listIds))
+          ..orderBy([
+            OrderingTerm.asc(listWords.listId),
+            OrderingTerm.asc(listWords.sortOrder),
+          ]);
+    return query.map((row) => row.readTable(words)).get();
+  }
+
   Future<int> getWordCountForList(int listId) {
     final inner = selectOnly(listWords)
       ..addColumns([listWords.id])
@@ -538,13 +552,14 @@ class AppDatabase extends _$AppDatabase {
   // ─── Forgotten Words ──────────────────────────────────────────────────────
 
   Future<void> markWordForgotten(int wordId, int listId) async {
-    final existing = await (select(listWords)
-          ..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId)))
-        .getSingleOrNull();
+    final existing =
+        await (select(listWords)
+              ..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId)))
+            .getSingleOrNull();
     if (existing == null) return;
-    await (update(listWords)
-          ..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId)))
-        .write(
+    await (update(
+      listWords,
+    )..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId))).write(
       ListWordsCompanion(
         isForgotten: const Value(true),
         forgottenCount: Value(existing.forgottenCount + 1),
@@ -600,7 +615,10 @@ class AppDatabase extends _$AppDatabase {
         select(
             errorWords,
           ).join([innerJoin(words, words.id.equalsExp(errorWords.wordId))])
-          ..where(errorWords.listId.equals(listId) & errorWords.isResolved.equals(false))
+          ..where(
+            errorWords.listId.equals(listId) &
+                errorWords.isResolved.equals(false),
+          )
           ..orderBy([OrderingTerm.desc(errorWords.errorCount)]);
     return query.map((row) => row.readTable(words)).get();
   }
@@ -610,7 +628,10 @@ class AppDatabase extends _$AppDatabase {
         select(
             errorWords,
           ).join([innerJoin(words, words.id.equalsExp(errorWords.wordId))])
-          ..where(errorWords.listId.equals(listId) & errorWords.isResolved.equals(false))
+          ..where(
+            errorWords.listId.equals(listId) &
+                errorWords.isResolved.equals(false),
+          )
           ..orderBy([OrderingTerm.desc(errorWords.errorCount)]);
     return query.map((row) {
       return ErrorWordWithCount(
@@ -656,9 +677,10 @@ class AppDatabase extends _$AppDatabase {
         )
         .toList();
 
-    stats.sort((a, b) => a.word.english.toLowerCase().compareTo(
-          b.word.english.toLowerCase(),
-        ));
+    stats.sort(
+      (a, b) =>
+          a.word.english.toLowerCase().compareTo(b.word.english.toLowerCase()),
+    );
     return stats;
   }
 
@@ -685,14 +707,14 @@ class AppDatabase extends _$AppDatabase {
   Future<List<_ReviewForgottenRow>> _selectReviewForgottenRows({
     int? bookId,
   }) async {
-    final query = select(listWords).join([
-      innerJoin(words, words.id.equalsExp(listWords.wordId)),
-      innerJoin(wordLists, wordLists.id.equalsExp(listWords.listId)),
-    ])
-      ..where(
-        listWords.isForgotten.equals(true) |
-            listWords.forgottenCount.isBiggerThanValue(0),
-      );
+    final query =
+        select(listWords).join([
+          innerJoin(words, words.id.equalsExp(listWords.wordId)),
+          innerJoin(wordLists, wordLists.id.equalsExp(listWords.listId)),
+        ])..where(
+          listWords.isForgotten.equals(true) |
+              listWords.forgottenCount.isBiggerThanValue(0),
+        );
     if (bookId != null) {
       query.where(wordLists.bookId.equals(bookId));
     }
@@ -734,15 +756,13 @@ class AppDatabase extends _$AppDatabase {
   }) async {
     if (wordIds.isEmpty) return;
     await transaction(() async {
-      final query = select(listWords).join([
-        innerJoin(wordLists, wordLists.id.equalsExp(listWords.listId)),
-      ]);
+      final query = select(
+        listWords,
+      ).join([innerJoin(wordLists, wordLists.id.equalsExp(listWords.listId))]);
       if (bookId != null) {
         query.where(wordLists.bookId.equals(bookId));
       }
-      final rows = await query
-          .map((row) => row.readTable(listWords))
-          .get();
+      final rows = await query.map((row) => row.readTable(listWords)).get();
       for (final row in rows) {
         if (!wordIds.contains(row.wordId) || !row.isForgotten) continue;
         await (update(listWords)..where((t) => t.id.equals(row.id))).write(
@@ -763,7 +783,9 @@ class AppDatabase extends _$AppDatabase {
     if (bookId != null) {
       query.where(wordLists.bookId.equals(bookId));
     }
-    final rows = await query.map((row) => row.readTable(listWords).listId).get();
+    final rows = await query
+        .map((row) => row.readTable(listWords).listId)
+        .get();
     return rows.toSet().toList();
   }
 

@@ -91,6 +91,9 @@ class WordListRepository {
 
   Future<List<Word>> getWordsForList(int listId) => _db.getWordsForList(listId);
 
+  Future<List<Word>> getWordsForLists(List<int> listIds) =>
+      _db.getWordsForLists(listIds);
+
   Future<List<Word>> getChoiceDistractorWordsForList(int listId) async {
     final listWords = await _db.getWordsForList(listId);
     final listWordIds = listWords.map((w) => w.id).toSet();
@@ -281,12 +284,16 @@ class SettingsRepository {
   static const String keyAiApiKey = 'ai_api_key';
   static const String keyAiBaseUrl = 'ai_base_url';
   static const String keyAiModel = 'ai_model';
+  static const String keyAiCollocationOptionValidationEnabled =
+      'ai_collocation_option_validation_enabled';
   static const String keyAiLastProvider = 'ai_usage_last_provider';
   static const String keyAiLastModel = 'ai_usage_last_model';
   static const String keyAiLastInputTokens = 'ai_usage_last_input_tokens';
   static const String keyAiLastOutputTokens = 'ai_usage_last_output_tokens';
   static const String keyAiTotalInputTokens = 'ai_usage_total_input_tokens';
   static const String keyAiTotalOutputTokens = 'ai_usage_total_output_tokens';
+  static const String keyLanguageToolEnabled = 'language_tool_enabled';
+  static const String keyLanguageToolBaseUrl = 'language_tool_base_url';
 
   Future<double> getPassThreshold() async =>
       (await getDouble(keyPassThreshold)) ?? 0.75;
@@ -316,6 +323,17 @@ class SettingsRepository {
 
   Future<void> setAiModel(String value) => setString(keyAiModel, value);
 
+  /// Defaults to true so existing users keep the current verified-choice flow.
+  Future<bool> getAiCollocationOptionValidationEnabled() async {
+    final value = await getString(keyAiCollocationOptionValidationEnabled);
+    return value != 'false';
+  }
+
+  Future<void> setAiCollocationOptionValidationEnabled(bool value) => setString(
+    keyAiCollocationOptionValidationEnabled,
+    value ? 'true' : 'false',
+  );
+
   Future<void> recordAiUsage({
     required String provider,
     required String model,
@@ -343,6 +361,19 @@ class SettingsRepository {
       totalOutputTokens: await getInt(keyAiTotalOutputTokens) ?? 0,
     );
   }
+
+  Future<bool> getLanguageToolEnabled() async {
+    final value = await getString(keyLanguageToolEnabled);
+    return value != 'false';
+  }
+
+  Future<void> setLanguageToolEnabled(bool value) =>
+      setString(keyLanguageToolEnabled, value ? 'true' : 'false');
+
+  Future<String?> getLanguageToolBaseUrl() => getString(keyLanguageToolBaseUrl);
+
+  Future<void> setLanguageToolBaseUrl(String value) =>
+      setString(keyLanguageToolBaseUrl, value);
 
   static const String keyAppLanguage = 'app_language';
   static const String keyTtsProvider = 'tts_provider';
@@ -377,7 +408,7 @@ class SettingsRepository {
 
   Future<void> setTtsVoice(String value) => setString(keyTtsVoice, value);
 
-  Future<double> getTtsSpeed() async => (await getDouble(keyTtsSpeed)) ?? 0.5;
+  Future<double> getTtsSpeed() async => (await getDouble(keyTtsSpeed)) ?? 0.6;
 
   Future<void> setTtsSpeed(double value) => setDouble(keyTtsSpeed, value);
 

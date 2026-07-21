@@ -7,12 +7,12 @@ import '../../../data/providers.dart';
 import '../providers/deep_practice_provider.dart';
 
 class DeepPracticeSetupScreen extends ConsumerStatefulWidget {
-  final int listId;
+  final List<int> listIds;
   final String returnPath;
 
   const DeepPracticeSetupScreen({
     super.key,
-    required this.listId,
+    required this.listIds,
     required this.returnPath,
   });
 
@@ -36,7 +36,7 @@ class _DeepPracticeSetupScreenState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref
             .read(deepPracticeProvider.notifier)
-            .initSession(listId: widget.listId, mode: 'deep_choice');
+            .initSession(listIds: widget.listIds, mode: 'deep_choice');
       });
     }
 
@@ -53,6 +53,31 @@ class _DeepPracticeSetupScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Card(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    const Icon(Icons.filter_alt_outlined),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        AppStrings.get(
+                          'deep_scope_selected_count',
+                          lang,
+                          params: {
+                            'lists': state.listIds.length.toString(),
+                            'words': state.words.length.toString(),
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
             // Mode selection
             Text(
               AppStrings.get('choose_mode', lang),
@@ -66,7 +91,7 @@ class _DeepPracticeSetupScreenState
               selected: state.mode == 'deep_choice',
               onTap: () => ref
                   .read(deepPracticeProvider.notifier)
-                  .initSession(listId: widget.listId, mode: 'deep_choice'),
+                  .initSession(listIds: widget.listIds, mode: 'deep_choice'),
             ),
             const SizedBox(height: 8),
             _ModeCard(
@@ -76,7 +101,7 @@ class _DeepPracticeSetupScreenState
               selected: state.mode == 'deep_fill',
               onTap: () => ref
                   .read(deepPracticeProvider.notifier)
-                  .initSession(listId: widget.listId, mode: 'deep_fill'),
+                  .initSession(listIds: widget.listIds, mode: 'deep_fill'),
             ),
             const SizedBox(height: 8),
             _ModeCard(
@@ -86,7 +111,7 @@ class _DeepPracticeSetupScreenState
               selected: state.mode == 'deep_idioms',
               onTap: () => ref
                   .read(deepPracticeProvider.notifier)
-                  .initSession(listId: widget.listId, mode: 'deep_idioms'),
+                  .initSession(listIds: widget.listIds, mode: 'deep_idioms'),
             ),
             const SizedBox(height: 24),
 
@@ -180,10 +205,42 @@ class _DeepPracticeSetupScreenState
                   ),
                 ),
               ),
+              if (state.hasCollocationFillFallback) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: theme.colorScheme.primaryContainer.withValues(
+                    alpha: 0.32,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            AppStrings.get(
+                              state.collocationOptionsDisabledBySetting
+                                  ? 'deep_collocation_fill_setup_disabled_notice'
+                                  : 'deep_collocation_fill_setup_notice',
+                              lang,
+                            ),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
 
             // Error
-            if (state.generationError != null) ...[
+            if (state.generationErrorKey != null) ...[
               const SizedBox(height: 12),
               Card(
                 color: theme.colorScheme.errorContainer,
@@ -199,7 +256,7 @@ class _DeepPracticeSetupScreenState
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          state.generationError!,
+                          _generationErrorText(state, lang),
                           style: theme.textTheme.bodySmall,
                         ),
                       ),
@@ -237,9 +294,11 @@ class _DeepPracticeSetupScreenState
             if (state.phase == DeepPracticePhase.ready)
               FilledButton.icon(
                 onPressed: () {
+                  final primaryListId = state.primaryListId;
+                  if (primaryListId == null) return;
                   ref.read(deepPracticeProvider.notifier).startQuiz();
                   context.push(
-                    '/deep-practice/${widget.listId}/quiz?returnPath=${Uri.encodeComponent(widget.returnPath)}',
+                    '/deep-practice/$primaryListId/quiz?listIds=${widget.listIds.join(',')}&returnPath=${Uri.encodeComponent(widget.returnPath)}',
                   );
                 },
                 icon: const Icon(Icons.play_arrow),
@@ -256,6 +315,14 @@ class _DeepPracticeSetupScreenState
           ],
         ),
       ),
+    );
+  }
+
+  String _generationErrorText(DeepPracticeState state, String lang) {
+    return AppStrings.get(
+      state.generationErrorKey!,
+      lang,
+      params: {'error': state.generationErrorDetail ?? ''},
     );
   }
 }

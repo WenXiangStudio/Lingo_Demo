@@ -10,11 +10,13 @@ import '../providers/deep_practice_provider.dart';
 
 class DeepPracticeResultScreen extends ConsumerStatefulWidget {
   final int listId;
+  final List<int> listIds;
   final String returnPath;
 
   const DeepPracticeResultScreen({
     super.key,
     required this.listId,
+    required this.listIds,
     required this.returnPath,
   });
 
@@ -36,7 +38,7 @@ class _DeepPracticeResultScreenState
   Future<void> _saveIfNeeded() async {
     if (_saved) return;
     final state = ref.read(deepPracticeProvider);
-    if (state.phase == DeepPracticePhase.finished && state.sessionId == null) {
+    if (state.phase == DeepPracticePhase.finished && !state.hasSaved) {
       await ref.read(deepPracticeProvider.notifier).saveSession();
       if (mounted) setState(() => _saved = true);
     }
@@ -50,7 +52,7 @@ class _DeepPracticeResultScreenState
 
     if (state.phase != DeepPracticePhase.finished) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go(widget.returnPath);
+        if (mounted) GoRouter.of(context).replace(widget.returnPath);
       });
       return const SizedBox.shrink();
     }
@@ -67,13 +69,10 @@ class _DeepPracticeResultScreenState
         AppConstants.defaultPassThreshold;
     final isPassed = accuracy >= threshold;
 
-    final errorWords = <String>[];
-    for (var i = 0; i < state.answers.length; i++) {
-      final a = state.answers[i];
-      if (!a.isCorrect) {
-        errorWords.add(a.correctAnswer);
-      }
-    }
+    final errorWords = state.answeredRecords
+        .where((answer) => answer.shouldRecordError)
+        .map((answer) => answer.correctAnswer)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -170,7 +169,7 @@ class _DeepPracticeResultScreenState
                 theme,
                 Icons.cancel_outlined,
                 AppStrings.get('incorrect_stat', lang),
-                '${totalCount - correctCount}',
+                '${state.incorrectCount}',
                 Colors.red,
               ),
               const SizedBox(width: 12),
@@ -183,6 +182,34 @@ class _DeepPracticeResultScreenState
               ),
             ],
           ),
+          if (state.acceptableAlternativeCount > 0) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: Colors.orange.withValues(alpha: 0.08),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.orange),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        AppStrings.get(
+                          'deep_acceptable_alternative_count',
+                          lang,
+                          params: {
+                            'count': state.acceptableAlternativeCount
+                                .toString(),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (errorWords.isNotEmpty) ...[
             const SizedBox(height: 24),
             Text(
@@ -214,7 +241,7 @@ class _DeepPracticeResultScreenState
             onPressed: () {
               ref.read(deepPracticeProvider.notifier).reset();
               context.go(
-                '/deep-practice/${widget.listId}/setup?returnPath=${Uri.encodeComponent(widget.returnPath)}',
+                '/deep-practice/${widget.listId}/setup?listIds=${widget.listIds.join(',')}&returnPath=${Uri.encodeComponent(widget.returnPath)}',
               );
             },
             icon: const Icon(Icons.replay),

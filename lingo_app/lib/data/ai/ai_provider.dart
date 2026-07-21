@@ -9,13 +9,42 @@ abstract class AiProvider {
 
   Future<List<Collocation>> generateCollocations(List<String> words);
 
+  /// Selects only safe wrong options from a locally supplied candidate pool.
+  /// This is called in batches while content is generated, then cached for
+  /// later attempts; it is never called while the learner taps an option.
+  Future<List<CollocationOptionValidation>> validateCollocationOptions(
+    List<CollocationOptionRequest> requests,
+  );
+
   Future<List<AiSentence>> generateSentences(List<String> words);
+
+  /// Checks a non-exact free-text cloze answer. Exact target-word matches are
+  /// handled locally and do not invoke this method.
+  Future<FillAnswerEvaluation> evaluateFillAnswer({
+    required String sentenceWithBlank,
+    required String targetWord,
+    required String userAnswer,
+  });
 
   /// Generate idioms or proverbs (俗语谚语) that incorporate the given words.
   /// Returns the same shape as sentences — English content + Chinese.
   Future<List<AiSentence>> generateIdioms(List<String> words);
 
   Future<Dialogue> generateDialogue(List<String> words, String scenario);
+
+  Future<InteractiveDialogueStart> startInteractiveDialogue(
+    List<String> words,
+    String scenario,
+  );
+
+  Future<InteractiveDialogueTurn> continueInteractiveDialogue({
+    required List<String> words,
+    required String scenario,
+    required List<InteractiveDialogueMessage> history,
+    required String userReply,
+    required List<String> usedWords,
+    String? grammarContext,
+  });
 
   Future<WordStory> generateWordStory(List<String> words);
 

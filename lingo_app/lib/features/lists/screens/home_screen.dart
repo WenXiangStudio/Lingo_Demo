@@ -214,12 +214,8 @@ class _HomeContent extends ConsumerWidget {
               icon: Icons.auto_awesome,
               label: AppStrings.get('ai_deep_learn', lang),
               detail: AppStrings.get('home_ai_deep_desc', lang),
-              onTap: () => _openPassedListFeature(
-                context,
-                lang,
-                passedListItems,
-                routeForList: (list) =>
-                    '/deep-practice/${list.id}/setup?returnPath=${Uri.encodeComponent('/')}',
+              onTap: () => context.push(
+                '/deep-practice/scope?returnPath=${Uri.encodeComponent('/')}',
               ),
             ),
             _HomeFeatureCard(
@@ -283,6 +279,19 @@ class _HomeContent extends ConsumerWidget {
                           _resetBookOrder(context, ref, books, lists, lang),
                     ),
               orElse: () => const SizedBox.shrink(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _HomeSectionTitle(label: AppStrings.get('home_section_labs', lang)),
+        const SizedBox(height: 8),
+        _HomeFeatureGrid(
+          children: [
+            _HomeFeatureCard(
+              icon: Icons.science_outlined,
+              label: AppStrings.get('lab_present_menu', lang),
+              detail: AppStrings.get('lab_present_menu_desc', lang),
+              onTap: () => context.push('/labs/present-tense-diagnosis'),
             ),
           ],
         ),

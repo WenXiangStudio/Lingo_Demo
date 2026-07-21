@@ -10,6 +10,7 @@ import '../../../core/services/tts_service.dart';
 import '../../../data/ai/ai_provider.dart';
 import '../../../data/ai/ai_service.dart';
 import '../../../data/database/app_database.dart';
+import '../../../data/language_tool/language_tool_client.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/repositories.dart';
 
@@ -500,6 +501,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _ttsPreCacheListCountController = TextEditingController();
   final _aiBaseUrlController = TextEditingController();
   final _aiModelController = TextEditingController();
+  final _languageToolBaseUrlController = TextEditingController();
   bool _apiKeyVisible = false;
   bool _ttsApiKeyVisible = false;
   bool _isTesting = false;
@@ -513,6 +515,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _language = 'en';
   String _ttsProvider = 'sapi';
   bool _ttsDoubaoLiveApiEnabled = true;
+  bool _aiCollocationOptionValidationEnabled = true;
+  bool _languageToolEnabled = true;
+  bool _isLanguageToolTesting = false;
+  String? _languageToolTestResult;
   bool _loaded = false;
 
   static const _ttsPreCacheListCountKey = 'tts_doubao_precache_list_count';
@@ -538,6 +544,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _ttsPreCacheListCountController.dispose();
     _aiBaseUrlController.dispose();
     _aiModelController.dispose();
+    _languageToolBaseUrlController.dispose();
     super.dispose();
   }
 
@@ -580,6 +587,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     final aiBaseUrl = await settingsRepo.getAiBaseUrl();
     final aiModel = await settingsRepo.getAiModel();
+    final aiCollocationOptionValidationEnabled = await settingsRepo
+        .getAiCollocationOptionValidationEnabled();
+    final languageToolEnabled = await settingsRepo.getLanguageToolEnabled();
+    final languageToolBaseUrl = await settingsRepo.getLanguageToolBaseUrl();
 
     if (mounted) {
       setState(() {
@@ -587,7 +598,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _apiKeyController.text = apiKey ?? '';
         _passThreshold = threshold;
         _themeMode = themeMode ?? 'system';
-        _ttsSpeed = ttsSpeed ?? 0.5;
+        _ttsSpeed = ttsSpeed ?? 0.6;
         _language = lang ?? 'en';
         _ttsProvider = _normalizeTtsProvider(ttsProvider);
         _ttsApiKeyController.text = ttsApiKey ?? '';
@@ -600,6 +611,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _ttsDoubaoLiveApiEnabled = ttsDoubaoLiveApiEnabled != 'false';
         _aiBaseUrlController.text = aiBaseUrl ?? '';
         _aiModelController.text = aiModel ?? '';
+        _aiCollocationOptionValidationEnabled =
+            aiCollocationOptionValidationEnabled;
+        _languageToolEnabled = languageToolEnabled;
+        _languageToolBaseUrlController.text =
+            languageToolBaseUrl ?? LanguageToolClient.defaultBaseUrl;
         _loaded = true;
       });
       if (_normalizeTtsProvider(ttsProvider) == 'doubao') {
@@ -634,6 +650,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.read(_aiServiceProvider).clearCache();
   }
 
+  Future<void> _saveAiCollocationOptionValidationEnabled(bool value) async {
+    setState(() => _aiCollocationOptionValidationEnabled = value);
+    await ref
+        .read(settingsRepositoryProvider)
+        .setAiCollocationOptionValidationEnabled(value);
+  }
+
   Future<void> _saveAiConfig(BuildContext context, String lang) async {
     final repo = ref.read(settingsRepositoryProvider);
     await repo.setAiApiKey(_apiKeyController.text.trim());
@@ -653,6 +676,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _savePassThreshold(double value) async {
     setState(() => _passThreshold = value);
     await ref.read(settingsRepositoryProvider).setPassThreshold(value);
+  }
+
+  Future<void> _saveLanguageToolEnabled(bool value) async {
+    setState(() => _languageToolEnabled = value);
+    await ref.read(settingsRepositoryProvider).setLanguageToolEnabled(value);
+  }
+
+  Future<void> _saveLanguageToolBaseUrl(String value) async {
+    final baseUrl = LanguageToolClient.normalizeBaseUrl(value);
+    await ref.read(settingsRepositoryProvider).setLanguageToolBaseUrl(baseUrl);
+    ref.invalidate(languageToolClientProvider);
+    if (mounted && _languageToolBaseUrlController.text != baseUrl) {
+      _languageToolBaseUrlController.text = baseUrl;
+    }
   }
 
   Future<void> _saveThemeMode(String value) async {
@@ -896,6 +933,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     } finally {
       if (mounted) setState(() => _isTesting = false);
+    }
+  }
+
+  Future<void> _testLanguageToolConnection() async {
+    final lang = ref.read(languageProvider);
+    setState(() {
+      _isLanguageToolTesting = true;
+      _languageToolTestResult = null;
+    });
+
+    try {
+      final baseUrl = LanguageToolClient.normalizeBaseUrl(
+        _languageToolBaseUrlController.text,
+      );
+      await ref
+          .read(settingsRepositoryProvider)
+          .setLanguageToolBaseUrl(baseUrl);
+      ref.invalidate(languageToolClientProvider);
+      _languageToolBaseUrlController.text = baseUrl;
+
+      final client = LanguageToolClient(baseUrl: baseUrl);
+      await client.check('She go to school every day.');
+      if (mounted) setState(() => _languageToolTestResult = 'success');
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _languageToolTestResult = AppStrings.get(
+            'language_tool_test_failed',
+            lang,
+            params: {'error': _formatTtsError(e)},
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLanguageToolTesting = false);
     }
   }
 
@@ -1620,6 +1692,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          Card(
+            child: SwitchListTile(
+              secondary: const Icon(Icons.quiz_outlined),
+              title: Text(
+                AppStrings.get('ai_collocation_option_validation', lang),
+              ),
+              subtitle: Text(
+                AppStrings.get('ai_collocation_option_validation_desc', lang),
+              ),
+              value: _aiCollocationOptionValidationEnabled,
+              onChanged: _saveAiCollocationOptionValidationEnabled,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _languageToolSettingsCard(theme, lang),
           const SizedBox(height: 16),
           _sectionHeader(AppStrings.get('practice_section', lang), Icons.tune),
           const SizedBox(height: 8),
@@ -2292,6 +2380,117 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _languageToolSettingsCard(ThemeData theme, String lang) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.rule, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppStrings.get('language_tool_section', lang),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                Switch(
+                  value: _languageToolEnabled,
+                  onChanged: _saveLanguageToolEnabled,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AppStrings.get('language_tool_desc', lang),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _languageToolBaseUrlController,
+              enabled: _languageToolEnabled,
+              onSubmitted: _saveLanguageToolBaseUrl,
+              onEditingComplete: () =>
+                  _saveLanguageToolBaseUrl(_languageToolBaseUrlController.text),
+              decoration: InputDecoration(
+                labelText: AppStrings.get('language_tool_base_url', lang),
+                hintText: LanguageToolClient.defaultBaseUrl,
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: !_languageToolEnabled || _isLanguageToolTesting
+                        ? null
+                        : _testLanguageToolConnection,
+                    icon: _isLanguageToolTesting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.play_arrow, size: 18),
+                    label: Text(
+                      _isLanguageToolTesting
+                          ? AppStrings.get('testing', lang)
+                          : AppStrings.get('test_btn', lang),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_languageToolTestResult != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _languageToolTestResult == 'success'
+                      ? Colors.green.withValues(alpha: 0.1)
+                      : Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _languageToolTestResult == 'success'
+                          ? Icons.check_circle
+                          : Icons.error_outline,
+                      color: _languageToolTestResult == 'success'
+                          ? Colors.green
+                          : Colors.red,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _languageToolTestResult == 'success'
+                            ? AppStrings.get('language_tool_test_success', lang)
+                            : _languageToolTestResult!,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _sectionHeader(String title, IconData icon) {
     return Row(
       children: [
@@ -2342,7 +2541,7 @@ class _ModelDownloadCard extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.cloud_download_outlined),
+                      const Icon(Icons.install_mobile_outlined),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -2364,7 +2563,7 @@ class _ModelDownloadCard extends ConsumerWidget {
                     onPressed: () {
                       ref.read(ttsModelManagerProvider).downloadModel();
                     },
-                    icon: const Icon(Icons.download, size: 18),
+                    icon: const Icon(Icons.install_mobile, size: 18),
                     label: Text(AppStrings.get('tts_download_model', lang)),
                   ),
                 ],

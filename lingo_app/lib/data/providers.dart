@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/i18n/locale_provider.dart';
 import 'database/app_database.dart';
+import 'language_tool/language_tool_client.dart';
+import 'retrieval/retrieval_v2_client.dart';
 import 'repositories/repositories.dart';
 
 final languageProvider = StateNotifierProvider<LanguageNotifier, String>((ref) {
@@ -34,5 +36,21 @@ final ttsRepositoryProvider = Provider<TtsRepository>(
 final aiContentRepositoryProvider = Provider<AiContentRepository>(
   (ref) => AiContentRepository(ref.watch(appDatabaseProvider)),
 );
+
+final retrievalV2ClientProvider = Provider<RetrievalV2Client>(
+  (ref) => RetrievalV2Client(),
+);
+
+final languageToolClientProvider = FutureProvider<LanguageToolClient>((
+  ref,
+) async {
+  final settingsRepo = ref.watch(settingsRepositoryProvider);
+  final baseUrl = await settingsRepo.getLanguageToolBaseUrl();
+  return LanguageToolClient(
+    baseUrl: baseUrl == null || baseUrl.trim().isEmpty
+        ? LanguageToolClient.defaultBaseUrl
+        : baseUrl,
+  );
+});
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);

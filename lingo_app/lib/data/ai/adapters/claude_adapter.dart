@@ -45,11 +45,36 @@ class ClaudeAdapter implements AiProvider {
     final results = (json as List).cast<Map<String, dynamic>>();
     final collocations = <Collocation>[];
     for (final entry in results) {
+      final sourceWord = entry['word'] as String? ?? '';
       for (final c in (entry['collocations'] as List)) {
-        collocations.add(Collocation.fromJson(c as Map<String, dynamic>));
+        collocations.add(
+          Collocation.fromJson({
+            ...(c as Map<String, dynamic>),
+            'word': sourceWord,
+          }),
+        );
       }
     }
     return collocations;
+  }
+
+  @override
+  Future<List<CollocationOptionValidation>> validateCollocationOptions(
+    List<CollocationOptionRequest> requests,
+  ) async {
+    if (requests.isEmpty) return const [];
+    final json = await _callClaude(
+      AiPrompts.collocationOptionValidationPrompt(requests),
+      retryOnInvalidJson: false,
+    );
+    return (json as List)
+        .whereType<Map>()
+        .map(
+          (item) => CollocationOptionValidation.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList(growable: false);
   }
 
   @override
@@ -59,11 +84,33 @@ class ClaudeAdapter implements AiProvider {
     final results = (json as List).cast<Map<String, dynamic>>();
     final sentences = <AiSentence>[];
     for (final entry in results) {
+      final sourceWord = entry['word'] as String? ?? '';
       for (final s in (entry['sentences'] as List)) {
-        sentences.add(AiSentence.fromJson(s as Map<String, dynamic>));
+        sentences.add(
+          AiSentence.fromJson({
+            ...(s as Map<String, dynamic>),
+            'word': sourceWord,
+          }),
+        );
       }
     }
     return sentences;
+  }
+
+  @override
+  Future<FillAnswerEvaluation> evaluateFillAnswer({
+    required String sentenceWithBlank,
+    required String targetWord,
+    required String userAnswer,
+  }) async {
+    final json = await _callClaude(
+      AiPrompts.fillAnswerEvaluationPrompt(
+        sentenceWithBlank: sentenceWithBlank,
+        targetWord: targetWord,
+        userAnswer: userAnswer,
+      ),
+    );
+    return FillAnswerEvaluation.fromJson(json as Map<String, dynamic>);
   }
 
   @override
@@ -73,8 +120,14 @@ class ClaudeAdapter implements AiProvider {
     final results = (json as List).cast<Map<String, dynamic>>();
     final idioms = <AiSentence>[];
     for (final entry in results) {
+      final sourceWord = entry['word'] as String? ?? '';
       for (final s in (entry['sentences'] as List)) {
-        idioms.add(AiSentence.fromJson(s as Map<String, dynamic>));
+        idioms.add(
+          AiSentence.fromJson({
+            ...(s as Map<String, dynamic>),
+            'word': sourceWord,
+          }),
+        );
       }
     }
     return idioms;
@@ -99,6 +152,37 @@ class ClaudeAdapter implements AiProvider {
   }
 
   @override
+  Future<InteractiveDialogueStart> startInteractiveDialogue(
+    List<String> words,
+    String scenario,
+  ) async {
+    final prompt = AiPrompts.interactiveDialogueStartPrompt(words, scenario);
+    final json = await _callClaude(prompt);
+    return InteractiveDialogueStart.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<InteractiveDialogueTurn> continueInteractiveDialogue({
+    required List<String> words,
+    required String scenario,
+    required List<InteractiveDialogueMessage> history,
+    required String userReply,
+    required List<String> usedWords,
+    String? grammarContext,
+  }) async {
+    final prompt = AiPrompts.interactiveDialogueTurnPrompt(
+      words: words,
+      scenario: scenario,
+      history: history.map((message) => message.toPromptJson()).toList(),
+      userReply: userReply,
+      usedWords: usedWords,
+      grammarContext: grammarContext,
+    );
+    final json = await _callClaude(prompt);
+    return InteractiveDialogueTurn.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
   Future<WordStory> generateWordStory(List<String> words) async {
     final prompt = AiPrompts.wordStoryPrompt(words);
     final json = await _callClaude(prompt);
@@ -112,7 +196,11 @@ class ClaudeAdapter implements AiProvider {
     return (json as List).first as String;
   }
 
-  Future<dynamic> _callClaude(String userPrompt) async {
+  Future<dynamic> _callClaude(
+    String userPrompt, {
+    bool isRetry = false,
+    bool retryOnInvalidJson = true,
+  }) async {
     final response = await _dio.post(
       '/v1/messages',
       data: {
@@ -125,12 +213,38 @@ class ClaudeAdapter implements AiProvider {
       },
     );
     _lastUsage = _parseUsage(response.data['usage']);
-    final content = response.data['content'] as List;
-    final text = content
-        .where((c) => c['type'] == 'text')
-        .map((c) => c['text'] as String)
+    final usage = _lastUsage;
+    try {
+      return _extractJson(_responseText(response.data));
+    } on FormatException {
+      if (isRetry || !retryOnInvalidJson) rethrow;
+      final result = await _callClaude(
+        '$userPrompt\n\nIMPORTANT: Your previous response was empty or malformed. Return only one complete valid JSON value, with no markdown or explanation.',
+        isRetry: true,
+      );
+      _lastUsage = _combineUsage(usage, _lastUsage);
+      return result;
+    }
+  }
+
+  String _responseText(Object? responseData) {
+    if (responseData is! Map) return '';
+    final content = responseData['content'];
+    if (content is! List) return '';
+    return content
+        .whereType<Map>()
+        .where((block) => block['type'] == 'text')
+        .map((block) => block['text'] as String? ?? '')
         .join('\n');
-    return jsonDecode(text);
+  }
+
+  AiUsage? _combineUsage(AiUsage? first, AiUsage? second) {
+    if (first == null) return second;
+    if (second == null) return first;
+    return AiUsage(
+      inputTokens: first.inputTokens + second.inputTokens,
+      outputTokens: first.outputTokens + second.outputTokens,
+    );
   }
 
   AiUsage? _parseUsage(Object? raw) {
@@ -141,5 +255,41 @@ class ClaudeAdapter implements AiProvider {
     final output = outputTokens is num ? outputTokens.toInt() : 0;
     if (input == 0 && output == 0) return null;
     return AiUsage(inputTokens: input, outputTokens: output);
+  }
+
+  dynamic _extractJson(String content) {
+    String cleaned = content.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.substring(7);
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.substring(3);
+    }
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.substring(0, cleaned.length - 3);
+    }
+    cleaned = cleaned.trim();
+    if (cleaned.isEmpty) {
+      throw const FormatException('AI returned an empty response.');
+    }
+    try {
+      return jsonDecode(cleaned);
+    } on FormatException {
+      final objectStart = cleaned.indexOf('{');
+      final arrayStart = cleaned.indexOf('[');
+      final starts = [objectStart, arrayStart].where((index) => index >= 0);
+      if (starts.isNotEmpty) {
+        final start = starts.reduce((a, b) => a < b ? a : b);
+        final end = [
+          cleaned.lastIndexOf('}'),
+          cleaned.lastIndexOf(']'),
+        ].reduce((a, b) => a > b ? a : b);
+        if (end > start) {
+          return jsonDecode(cleaned.substring(start, end + 1));
+        }
+      }
+      throw const FormatException(
+        'AI returned incomplete or non-JSON content.',
+      );
+    }
   }
 }

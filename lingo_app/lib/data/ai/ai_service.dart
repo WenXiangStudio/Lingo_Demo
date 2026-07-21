@@ -64,6 +64,7 @@ class AiService {
               : 'https://api.deepseek.com',
           apiKey: apiKey,
           model: (model != null && model.isNotEmpty) ? model : 'deepseek-chat',
+          useJsonObjectForCollocationValidation: true,
         );
       case AiProviderType.kimi:
         return OpenAICompatibleAdapter(
@@ -114,8 +115,32 @@ class _UsageTrackingAiProvider implements AiProvider {
   }
 
   @override
+  Future<List<CollocationOptionValidation>> validateCollocationOptions(
+    List<CollocationOptionRequest> requests,
+  ) async {
+    final result = await _inner.validateCollocationOptions(requests);
+    await _recordLastUsage();
+    return result;
+  }
+
+  @override
   Future<List<AiSentence>> generateSentences(List<String> words) async {
     final result = await _inner.generateSentences(words);
+    await _recordLastUsage();
+    return result;
+  }
+
+  @override
+  Future<FillAnswerEvaluation> evaluateFillAnswer({
+    required String sentenceWithBlank,
+    required String targetWord,
+    required String userAnswer,
+  }) async {
+    final result = await _inner.evaluateFillAnswer(
+      sentenceWithBlank: sentenceWithBlank,
+      targetWord: targetWord,
+      userAnswer: userAnswer,
+    );
     await _recordLastUsage();
     return result;
   }
@@ -130,6 +155,37 @@ class _UsageTrackingAiProvider implements AiProvider {
   @override
   Future<Dialogue> generateDialogue(List<String> words, String scenario) async {
     final result = await _inner.generateDialogue(words, scenario);
+    await _recordLastUsage();
+    return result;
+  }
+
+  @override
+  Future<InteractiveDialogueStart> startInteractiveDialogue(
+    List<String> words,
+    String scenario,
+  ) async {
+    final result = await _inner.startInteractiveDialogue(words, scenario);
+    await _recordLastUsage();
+    return result;
+  }
+
+  @override
+  Future<InteractiveDialogueTurn> continueInteractiveDialogue({
+    required List<String> words,
+    required String scenario,
+    required List<InteractiveDialogueMessage> history,
+    required String userReply,
+    required List<String> usedWords,
+    String? grammarContext,
+  }) async {
+    final result = await _inner.continueInteractiveDialogue(
+      words: words,
+      scenario: scenario,
+      history: history,
+      userReply: userReply,
+      usedWords: usedWords,
+      grammarContext: grammarContext,
+    );
     await _recordLastUsage();
     return result;
   }

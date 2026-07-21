@@ -76,6 +76,7 @@ class AppStrings {
     'home_section_learning': {'en': 'Learning', 'zh': '学习'},
     'home_section_ai_practice': {'en': 'AI Practice', 'zh': 'AI 练习'},
     'home_section_tools': {'en': 'Tools', 'zh': '工具'},
+    'home_section_labs': {'en': 'Labs', 'zh': '实验室'},
     'home_ai_deep_desc': {
       'en': 'Practice collocations, sentences, and idioms.',
       'zh': '练习搭配、语境句和俗语谚语。',
@@ -95,6 +96,190 @@ class AppStrings {
     'home_choose_passed_list': {
       'en': 'Choose a passed list',
       'zh': '选择已通过的单词表',
+    },
+
+    // ─── Labs ───
+    'lab_present_menu': {'en': 'Present Tense Diagnosis Lab', 'zh': '现在时诊断实验室'},
+    'lab_present_menu_desc': {
+      'en': 'Test real answers against the local grammar diagnosis engine.',
+      'zh': '用真实回答验证本地语法诊断引擎。',
+    },
+    'lab_present_title': {
+      'en': 'Present Tense Diagnosis Lab',
+      'zh': '现在时诊断实验室',
+    },
+    'lab_present_experiment_badge': {'en': 'Experiment', 'zh': '实验验证'},
+    'lab_present_intro': {
+      'en':
+          'This page only sends the question and answer to the local diagnosis service, then renders the returned JSON.',
+      'zh': '本页面只把题目和回答发送给本地诊断服务，然后渲染返回的 JSON。',
+    },
+    'lab_present_question_section': {'en': 'Question', 'zh': '题目区'},
+    'lab_present_question_picker': {'en': 'Built-in prompt', 'zh': '内置题目'},
+    'lab_present_answer_label': {'en': 'Your answer', 'zh': '用户回答'},
+    'lab_present_answer_hint': {
+      'en': 'Type a real learner answer...',
+      'zh': '输入一个真实学习者回答...',
+    },
+    'lab_present_use_sample': {'en': 'Use sample answer', 'zh': '使用示例回答'},
+    'lab_present_sample_answer': {
+      'en': 'My brother like coffee, but he drinking tea now.',
+      'zh': 'My brother like coffee, but he drinking tea now.',
+    },
+    'lab_present_submit': {'en': 'Run Diagnosis', 'zh': '提交诊断'},
+    'lab_present_submitting': {'en': 'Diagnosing...', 'zh': '正在诊断...'},
+    'lab_present_empty_answer': {
+      'en': 'Enter an answer first.',
+      'zh': '请先输入回答。',
+    },
+    'lab_present_submit_failed': {
+      'en': 'Diagnosis failed: {error}',
+      'zh': '诊断失败：{error}',
+    },
+    'lab_present_feedback_section': {'en': 'Business Feedback', 'zh': '业务反馈区'},
+    'lab_present_feedback_empty': {
+      'en': 'Submit an answer to see the user-facing diagnosis.',
+      'zh': '提交回答后查看面向用户的诊断结果。',
+    },
+    'lab_present_has_error': {
+      'en': 'The answer has grammar errors.',
+      'zh': '回答存在语法错误。',
+    },
+    'lab_present_no_error': {
+      'en': 'No grammar error was found.',
+      'zh': '未发现语法错误。',
+    },
+    'lab_present_error_n': {'en': 'Error {index}', 'zh': '第 {index} 处错误'},
+    'lab_present_error_span': {'en': 'Span', 'zh': '错误片段'},
+    'lab_present_error_type': {'en': 'Error type', 'zh': '错误类型'},
+    'lab_present_grammar_rule': {'en': 'Grammar rule', 'zh': '语法声明'},
+    'lab_present_reasoning': {'en': 'Reasoning', 'zh': '改正思路'},
+    'lab_present_correction': {'en': 'Correction', 'zh': '改正'},
+    'lab_present_corrected_answer': {
+      'en': 'Corrected example',
+      'zh': '改正后的正确例子',
+    },
+    'lab_present_manual_rating': {'en': 'Manual Rating', 'zh': '手动评价'},
+    'lab_present_rating_good': {'en': 'Good', 'zh': '好'},
+    'lab_present_rating_acceptable': {'en': 'Acceptable', 'zh': '可接受'},
+    'lab_present_rating_failed_label': {'en': 'Failed', 'zh': '失败'},
+    'lab_present_rating_unset': {'en': 'unset', 'zh': '未评价'},
+    'lab_present_rating_failed': {
+      'en': 'Failed to save rating: {error}',
+      'zh': '保存评价失败：{error}',
+    },
+    'lab_present_debug_section': {'en': 'Debug', 'zh': 'Debug 区'},
+    'lab_present_central_cards': {'en': 'central cards', 'zh': 'central cards'},
+    'lab_present_supporting_cards': {
+      'en': 'supporting cards',
+      'zh': 'supporting cards',
+    },
+    'lab_present_fallback': {'en': 'fallback', 'zh': 'fallback'},
+    'lab_present_record_id': {'en': 'record id', 'zh': 'record id'},
+    'lab_present_records_path': {'en': 'records path', 'zh': 'records path'},
+    'lab_present_raw_json': {'en': 'raw JSON', 'zh': 'raw JSON'},
+    'lab_present_raw_json_empty': {'en': 'No response yet.', 'zh': '暂无返回结果。'},
+    'lab_present_recent_records': {'en': 'Recent records', 'zh': '最近测试记录'},
+    'lab_present_recent_record_line': {
+      'en': '{time} · central {cards} · rating {rating}',
+      'zh': '{time} · central {cards} · 评价 {rating}',
+    },
+    'lab_present_known_gap_section': {'en': 'Known Gap Cases', 'zh': '已知漏判样例'},
+    'lab_present_known_gap_desc': {
+      'en': 'Regression samples for later knowledge-base expansion.',
+      'zh': '用于后续知识库扩展后的回归验证。',
+    },
+    'lab_present_known_gap_answer': {'en': 'Answer', 'zh': '回答'},
+    'lab_present_known_gap_expected': {
+      'en': 'Expected correction',
+      'zh': '预期改正',
+    },
+    'lab_present_known_gap_units': {
+      'en': 'Future knowledge area',
+      'zh': '后续知识点范围',
+    },
+    'lab_present_known_gap_load': {'en': 'Load Case', 'zh': '加载样例'},
+    'lab_present_known_gap_1_label': {
+      'en': 'Either/neither for two alternatives',
+      'zh': '两者否定 either / neither',
+    },
+    'lab_present_known_gap_1_answer': {
+      'en': "She doesn't like any one.",
+      'zh': "She doesn't like any one.",
+    },
+    'lab_present_known_gap_1_expected': {
+      'en': "She doesn't like either. / She likes neither.",
+      'zh': "She doesn't like either. / She likes neither.",
+    },
+    'lab_present_known_gap_1_units': {
+      'en':
+          'Pronouns and determiners: either, neither, one; later units 42, 76, 77, 81.',
+      'zh': '代词和限定词：either、neither、one；后续 Unit 42、76、77、81。',
+    },
+    'lab_present_known_gap_2_label': {
+      'en': 'Count noun plural after some',
+      'zh': 'some 后可数名词复数',
+    },
+    'lab_present_known_gap_2_answer': {
+      'en': 'She is reading some newspaper.',
+      'zh': 'She is reading some newspaper.',
+    },
+    'lab_present_known_gap_2_expected': {
+      'en': 'She is reading some newspapers.',
+      'zh': 'She is reading some newspapers.',
+    },
+    'lab_present_known_gap_2_units': {
+      'en':
+          'Countable and uncountable nouns; noun plural forms; later units 66 and 67.',
+      'zh': '可数 / 不可数名词、名词复数形式；后续 Unit 66、67。',
+    },
+    'lab_present_question_1': {
+      'en': 'What does your brother drink?',
+      'zh': 'What does your brother drink?',
+    },
+    'lab_present_question_2': {
+      'en': 'What does your sister do every morning?',
+      'zh': 'What does your sister do every morning?',
+    },
+    'lab_present_question_3': {
+      'en': 'Where does Tom work?',
+      'zh': 'Where does Tom work?',
+    },
+    'lab_present_question_4': {
+      'en': 'What are you doing now?',
+      'zh': 'What are you doing now?',
+    },
+    'lab_present_question_5': {
+      'en': 'What is Anna reading at the moment?',
+      'zh': 'What is Anna reading at the moment?',
+    },
+    'lab_present_question_6': {
+      'en': 'How often do you watch TV?',
+      'zh': 'How often do you watch TV?',
+    },
+    'lab_present_question_7': {
+      'en': 'Does your father usually cook dinner?',
+      'zh': 'Does your father usually cook dinner?',
+    },
+    'lab_present_question_8': {
+      'en': 'Are the children playing outside now?',
+      'zh': 'Are the children playing outside now?',
+    },
+    'lab_present_question_9': {
+      'en': 'What time does the train leave?',
+      'zh': 'What time does the train leave?',
+    },
+    'lab_present_question_10': {
+      'en': 'What are your friends talking about?',
+      'zh': 'What are your friends talking about?',
+    },
+    'lab_present_question_11': {
+      'en': 'Does Maria like tea or coffee?',
+      'zh': 'Does Maria like tea or coffee?',
+    },
+    'lab_present_question_12': {
+      'en': 'What do you usually have for breakfast?',
+      'zh': 'What do you usually have for breakfast?',
     },
 
     // ─── Lingo Skills ───
@@ -698,6 +883,55 @@ class AppStrings {
 
     // ─── Deep practice setup ───
     'ai_deep_learning': {'en': 'AI Deep Learning', 'zh': 'AI 深度学习'},
+    'back': {'en': 'Back', 'zh': '返回'},
+    'deep_scope_title': {'en': 'Choose practice range', 'zh': '选择练习范围'},
+    'deep_scope_description': {
+      'en':
+          'Choose a continuous range of passed Lists from one word book. Only words in this range become exercise targets.',
+      'zh': '在同一本词书中选择连续的已通过 List。只有该范围内的单词会成为练习目标。',
+    },
+    'deep_scope_book_label': {'en': 'Word book', 'zh': '词书'},
+    'deep_scope_passed_section_label': {
+      'en': 'Available passed sections',
+      'zh': '可选的已通过区段',
+    },
+    'deep_scope_start_label': {'en': 'Start List', 'zh': '起始 List'},
+    'deep_scope_end_label': {'en': 'End List', 'zh': '结束 List'},
+    'deep_scope_selected_title': {'en': 'Selected range', 'zh': '已选范围'},
+    'deep_scope_selected_count': {
+      'en': '{lists} Lists · {words} words',
+      'zh': '{lists} 个 List · {words} 个单词',
+    },
+    'deep_scope_range_label': {
+      'en': '{start} – {end}',
+      'zh': '{start} – {end}',
+    },
+    'deep_scope_continue': {'en': 'Choose learning mode', 'zh': '选择学习模式'},
+    'deep_scope_other_lists': {'en': 'Other Lists', 'zh': '其他 List'},
+    'deep_scope_no_passed_lists': {
+      'en': 'Pass at least one List before starting AI Deep Learning.',
+      'zh': '至少通过一个 List 后才能开始 AI 深度学习。',
+    },
+    'deep_scope_load_error': {
+      'en': 'Unable to load your Lists.',
+      'zh': '无法加载你的 List。',
+    },
+    'deep_scope_invalid': {
+      'en': 'Choose at least one passed List first.',
+      'zh': '请先选择至少一个已通过的 List。',
+    },
+    'deep_scope_requires_pass': {
+      'en': 'Every List in this range must be passed.',
+      'zh': '范围内的每个 List 都必须已通过。',
+    },
+    'deep_scope_same_book_required': {
+      'en': 'Choose Lists from the same word book.',
+      'zh': '请选择同一本词书中的 List。',
+    },
+    'deep_scope_no_words': {
+      'en': 'The selected range has no words.',
+      'zh': '所选范围没有单词。',
+    },
     'collocations_title': {'en': 'Collocations', 'zh': '词语搭配'},
     'collocations_desc': {
       'en':
@@ -727,15 +961,72 @@ class AppStrings {
       'zh': '开始练习（{count} 题）',
     },
     'no_questions': {'en': 'No questions available.', 'zh': '没有可用的题目。'},
+    'deep_no_generated_content': {
+      'en': 'No usable AI content was generated. Please generate again.',
+      'zh': '没有生成可用的 AI 内容，请重新生成。',
+    },
+    'deep_generation_failed': {
+      'en': 'AI generation failed: {error}',
+      'zh': 'AI 生成失败：{error}',
+    },
+    'deep_ai_response_invalid': {
+      'en':
+          'The AI returned an incomplete response after one retry. Please try again, or check the selected provider and model in Settings.',
+      'zh': 'AI 重试后仍返回不完整内容。请重新生成，或检查设置中的服务商和模型。',
+    },
+    'deep_answer_check_failed': {
+      'en':
+          'Unable to check this alternative answer. Please try again: {error}',
+      'zh': '无法判断这个替代答案，请重试：{error}',
+    },
 
     // ─── Deep practice quiz ───
     'collocation_question': {
       'en': 'What word fits this collocation?',
       'zh': '哪个词符合这个搭配？',
     },
+    'collocation_fill_question': {
+      'en': 'Type the target word to complete this collocation',
+      'zh': '输入目标词完成这个搭配',
+    },
+    'deep_collocation_fill_notice': {
+      'en':
+          'Safe multiple-choice options were unavailable, so this collocation is shown as a fill-in question.',
+      'zh': '暂时无法校验安全的选择题干扰项，因此该搭配以填空题呈现。',
+    },
+    'deep_collocation_fill_setup_notice': {
+      'en':
+          'Some collocations will use typing because safe multiple-choice options could not be verified.',
+      'zh': '部分搭配因无法校验安全干扰项，将以填空方式练习。',
+    },
+    'deep_collocation_fill_disabled_notice': {
+      'en':
+          'AI option validation is off, so this collocation is shown as a fill-in question.',
+      'zh': 'AI 干扰项校验已关闭，因此该搭配以填空题呈现。',
+    },
+    'deep_collocation_fill_setup_disabled_notice': {
+      'en':
+          'AI option validation is off. Collocations will use typing instead of multiple choice.',
+      'zh': 'AI 干扰项校验已关闭，搭配题将以填空方式练习。',
+    },
     'complete_sentence': {'en': 'Complete the sentence', 'zh': '完成句子'},
     'hint_prefix': {'en': 'Hint: {hint}', 'zh': '提示：{hint}'},
     'type_missing_word': {'en': 'Type the missing word...', 'zh': '输入缺失的单词...'},
+    'previous_question': {'en': 'Previous question', 'zh': '上一题'},
+    'edit_answer': {'en': 'Edit answer', 'zh': '修改答案'},
+    'deep_acceptable_alternative': {
+      'en': 'Acceptable alternative',
+      'zh': '表达可接受',
+    },
+    'deep_acceptable_alternative_message': {
+      'en': 'Your answer works, but the target word is {word}.',
+      'zh': '你的表达可以成立，但本题目标词是 {word}。',
+    },
+    'deep_acceptable_alternative_count': {
+      'en':
+          '{count} answer(s) were linguistically acceptable but did not use the target word.',
+      'zh': '{count} 个答案表达可接受，但未使用目标词。',
+    },
 
     // ─── Deep practice result ───
     'deep_results': {'en': 'Deep Practice Results', 'zh': 'AI 深度学习结果'},
@@ -786,6 +1077,36 @@ class AppStrings {
     'ai_usage_load_failed': {
       'en': 'Failed to load AI usage: {msg}',
       'zh': '加载 AI 消耗失败：{msg}',
+    },
+    'ai_collocation_option_validation': {
+      'en': 'AI-validate collocation options',
+      'zh': 'AI 校验搭配干扰项',
+    },
+    'ai_collocation_option_validation_desc': {
+      'en':
+          'Uses an extra AI call to verify multiple-choice distractors. Turn it off to save time and tokens; collocations will use fill-in questions.',
+      'zh': '额外调用 AI 校验选择题干扰项。关闭可节省时间和 Token；搭配题将以填空题呈现。',
+    },
+    'language_tool_section': {
+      'en': 'LanguageTool Grammar Check',
+      'zh': 'LanguageTool 语法检查',
+    },
+    'language_tool_desc': {
+      'en':
+          'Checks each AI Dialogue reply before AI feedback and adds grammar suggestions to the feedback panel.',
+      'zh': '在 AI 对话反馈前检查每次英文回复，并把语法建议加入反馈区。',
+    },
+    'language_tool_base_url': {
+      'en': 'LanguageTool Base URL',
+      'zh': 'LanguageTool 服务地址',
+    },
+    'language_tool_test_success': {
+      'en': 'LanguageTool connection successful.',
+      'zh': 'LanguageTool 连接成功。',
+    },
+    'language_tool_test_failed': {
+      'en': 'LanguageTool test failed: {error}',
+      'zh': 'LanguageTool 测试失败：{error}',
     },
     'language_section': {'en': 'Language', 'zh': '语言'},
     'language_label': {'en': 'Language', 'zh': '语言'},
@@ -998,20 +1319,24 @@ class AppStrings {
     },
     'tts_model_status': {'en': 'Model Status', 'zh': '模型状态'},
     'tts_model_not_downloaded': {
-      'en': 'Model not downloaded (~350 MB)',
-      'zh': '模型未下载（约350MB）',
+      'en': 'Local model not installed (~400 MB)',
+      'zh': '本地模型尚未安装（约 400 MB）',
     },
     'tts_model_downloading': {
-      'en': 'Downloading model... {progress}%',
-      'zh': '正在下载模型... {progress}%',
+      'en': 'Installing local model... {progress}%',
+      'zh': '正在安装本地模型… {progress}%',
     },
     'tts_model_ready': {'en': 'Model ready', 'zh': '模型已就绪'},
-    'tts_model_error': {'en': 'Download failed: {error}', 'zh': '下载失败：{error}'},
-    'tts_download_model': {'en': 'Download Model', 'zh': '下载模型'},
-    'tts_retry_download': {'en': 'Retry Download', 'zh': '重试下载'},
+    'tts_model_error': {
+      'en': 'Model setup failed: {error}',
+      'zh': '模型安装失败：{error}',
+    },
+    'tts_download_model': {'en': 'Install Local Model', 'zh': '安装本地模型'},
+    'tts_retry_download': {'en': 'Try Again', 'zh': '重试'},
     'tts_download_warning': {
-      'en': 'Uses mobile data. Download on Wi-Fi recommended.',
-      'zh': '将使用移动数据，建议在Wi-Fi下下载。',
+      'en':
+          'This test build includes the model and installs it offline. About 400 MB of free storage is required.',
+      'zh': '此测试版已内置模型，可离线安装；请预留约 400 MB 存储空间。',
     },
     'ai_configure_hint': {
       'en': 'Please configure your AI API key in Settings.',
@@ -1034,17 +1359,98 @@ class AppStrings {
     // ─── AI Dialogue ───
     'ai_dialogue_title': {'en': 'AI Dialogue', 'zh': 'AI 对话'},
     'dialogue_scenario': {'en': 'Scenario', 'zh': '场景'},
+    'dialogue_scenario_daily': {'en': 'Daily conversation', 'zh': '日常交流'},
+    'dialogue_scenario_shopping': {'en': 'Shopping', 'zh': '购物'},
+    'dialogue_scenario_restaurant': {'en': 'Ordering food', 'zh': '餐厅点餐'},
+    'dialogue_scenario_travel': {'en': 'Travel', 'zh': '旅行机场'},
+    'dialogue_scenario_interview': {'en': 'Job interview', 'zh': '工作面试'},
+    'dialogue_scenario_doctor': {'en': 'Doctor visit', 'zh': '就医看诊'},
+    'dialogue_scenario_phone': {'en': 'Phone call', 'zh': '电话沟通'},
+    'dialogue_scenario_directions': {'en': 'Asking directions', 'zh': '问路'},
+    'dialogue_scenario_hotel': {'en': 'At a hotel', 'zh': '酒店入住'},
+    'dialogue_scenario_meeting': {'en': 'Business meeting', 'zh': '商务会议'},
     'select_words_for_dialogue': {
       'en': 'Select words ({count} selected)',
       'zh': '选择单词（已选 {count} 个）',
     },
     'select_all': {'en': 'Select All', 'zh': '全选'},
     'deselect_all': {'en': 'Deselect All', 'zh': '取消全选'},
+    'dialogue_select_recommended': {'en': 'Recommended', 'zh': '推荐选择'},
     'generate_dialogue': {'en': 'Generate Dialogue', 'zh': '生成对话'},
     'generating_dialogue': {'en': 'Generating dialogue...', 'zh': '正在生成对话...'},
+    'dialogue_start_practice': {'en': 'Start Role-play', 'zh': '开始角色练习'},
+    'dialogue_starting_practice': {
+      'en': 'Starting role-play...',
+      'zh': '正在开始角色练习...',
+    },
+    'dialogue_reply_hint': {'en': 'Reply in English', 'zh': '用英语回复'},
+    'dialogue_send': {'en': 'Send', 'zh': '发送'},
     'lines_count': {'en': 'lines', 'zh': '行'},
     'regenerate': {'en': 'Regenerate', 'zh': '重新生成'},
     'toggle_translation': {'en': 'Toggle Translation', 'zh': '切换翻译'},
+    'dialogue_turn_count': {
+      'en': 'Turn {current}/{total}',
+      'zh': '轮次 {current}/{total}',
+    },
+    'dialogue_words_used_count': {
+      'en': 'Words {used}/{total}',
+      'zh': '用词 {used}/{total}',
+    },
+    'dialogue_try_words': {'en': 'Try next: {words}', 'zh': '下一轮尝试：{words}'},
+    'dialogue_feedback': {'en': 'Feedback', 'zh': '反馈'},
+    'language_tool_title': {'en': 'LanguageTool', 'zh': 'LanguageTool'},
+    'language_tool_no_issues': {
+      'en': 'No grammar or spelling issue found by LanguageTool.',
+      'zh': 'LanguageTool 未发现语法或拼写问题。',
+    },
+    'language_tool_unavailable': {
+      'en': 'LanguageTool is unavailable: {error}',
+      'zh': 'LanguageTool 当前不可用：{error}',
+    },
+    'language_tool_issue': {
+      'en': '{issue}: {message}',
+      'zh': '{issue}：{message}',
+    },
+    'language_tool_suggestions': {
+      'en': 'Suggestions: {suggestions}',
+      'zh': '建议：{suggestions}',
+    },
+    'dialogue_naturalness': {'en': 'Naturalness', 'zh': '自然度'},
+    'dialogue_context_fit': {'en': 'Context', 'zh': '场景匹配'},
+    'dialogue_no_words_used': {
+      'en': 'No target word used in this reply.',
+      'zh': '这次回复还没有使用目标词。',
+    },
+    'dialogue_used_words': {'en': 'Used: {words}', 'zh': '已使用：{words}'},
+    'dialogue_correction': {'en': 'Correction: {text}', 'zh': '纠正：{text}'},
+    'dialogue_better_version': {'en': 'Better: {text}', 'zh': '更自然：{text}'},
+    'dialogue_complete_title': {'en': 'Role-play Complete', 'zh': '角色练习完成'},
+    'dialogue_summary': {
+      'en': '{turns} turns completed. Target words used: {used}/{total}.',
+      'zh': '已完成 {turns} 轮。目标词使用：{used}/{total}。',
+    },
+    'dialogue_practice_again': {'en': 'Practice Again', 'zh': '再练一次'},
+    'dialogue_change_setup': {'en': 'Change Setup', 'zh': '调整设置'},
+    'dialogue_error_min_words': {
+      'en': 'Select 3 to 5 words for role-play practice.',
+      'zh': '请选择 3 到 5 个单词进行角色练习。',
+    },
+    'dialogue_error_max_words': {
+      'en': 'Use up to 5 words so the conversation stays natural.',
+      'zh': '最多选择 5 个单词，避免对话变得生硬。',
+    },
+    'dialogue_error_empty_reply': {
+      'en': 'Enter an English reply first.',
+      'zh': '请先输入一句英文回复。',
+    },
+    'dialogue_start_failed': {
+      'en': 'Failed to start role-play: {error}',
+      'zh': '角色练习启动失败：{error}',
+    },
+    'dialogue_turn_failed': {
+      'en': 'Failed to continue dialogue: {error}',
+      'zh': '对话继续失败：{error}',
+    },
     'ai_dialogue_btn': {'en': 'AI Dialogue', 'zh': 'AI 对话'},
   };
 

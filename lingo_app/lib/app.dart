@@ -18,7 +18,6 @@ import 'features/practice/screens/deep_practice_setup_screen.dart';
 import 'features/practice/screens/deep_practice_quiz_screen.dart';
 import 'features/practice/screens/deep_practice_result_screen.dart';
 import 'features/practice/screens/deep_practice_scope_screen.dart';
-import 'features/practice/screens/practice_history_screen.dart';
 import 'features/practice/screens/error_word_review_screen.dart';
 import 'features/practice/screens/forgotten_words_screen.dart';
 import 'features/deep_learning/screens/dialogue_screen.dart';
@@ -26,6 +25,7 @@ import 'features/tts/screens/custom_tts_screen.dart';
 import 'features/speaking/screens/speaking_practice_screen.dart';
 import 'features/skills/screens/skills_screen.dart';
 import 'features/labs/present_tense_diagnosis/screens/present_tense_diagnosis_lab_screen.dart';
+import 'features/phonetics/screens/phonetics_screen.dart';
 
 List<int> _deepPracticeListIds(GoRouterState state, int fallbackListId) {
   final raw = state.uri.queryParameters['listIds'];
@@ -78,12 +78,15 @@ final _routerProvider = Provider<GoRouter>((ref) {
           final onlyForgotten =
               state.uri.queryParameters['forgotten'] == 'true';
           final onlyErrors = state.uri.queryParameters['errors'] == 'true';
+          final trackExampleReveals =
+              state.uri.queryParameters['exampleCueTracking'] == 'true';
           final returnPath =
               state.uri.queryParameters['returnPath'] ?? '/list/$listId';
           return PracticeSetupScreen(
             listId: listId,
             onlyForgotten: onlyForgotten,
             onlyErrors: onlyErrors,
+            trackExampleReveals: trackExampleReveals,
             returnPath: returnPath,
           );
         },
@@ -110,7 +113,14 @@ final _routerProvider = Provider<GoRouter>((ref) {
         path: '/deep-practice/scope',
         builder: (context, state) {
           final returnPath = state.uri.queryParameters['returnPath'] ?? '/';
-          return DeepPracticeScopeScreen(returnPath: returnPath);
+          return DeepPracticeScopeScreen(
+            returnPath: returnPath,
+            initialListId: int.tryParse(
+              state.uri.queryParameters['initialListId'] ??
+                  state.uri.queryParameters['listId'] ??
+                  '',
+            ),
+          );
         },
       ),
       GoRoute(
@@ -155,17 +165,6 @@ final _routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/history',
-        builder: (context, state) => const PracticeHistoryScreen(),
-      ),
-      GoRoute(
-        path: '/history/:listId',
-        builder: (context, state) {
-          final listId = int.parse(state.pathParameters['listId']!);
-          return PracticeHistoryScreen(listId: listId);
-        },
-      ),
-      GoRoute(
         path: '/error-words/:listId',
         builder: (context, state) {
           final listId = int.parse(state.pathParameters['listId']!);
@@ -184,8 +183,18 @@ final _routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CustomTtsScreen(),
       ),
       GoRoute(
+        path: '/phonetics',
+        builder: (context, state) => const PhoneticsScreen(),
+      ),
+      GoRoute(
         path: '/skills',
-        builder: (context, state) => const SkillsScreen(),
+        builder: (context, state) => SkillsScreen(
+          initialListId: int.tryParse(
+            state.uri.queryParameters['initialListId'] ??
+                state.uri.queryParameters['listId'] ??
+                '',
+          ),
+        ),
       ),
       GoRoute(
         path: '/labs/present-tense-diagnosis',

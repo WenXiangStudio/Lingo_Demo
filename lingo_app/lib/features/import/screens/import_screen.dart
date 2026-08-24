@@ -18,9 +18,7 @@ class ImportScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(AppStrings.get('import_words_title', lang)),
-      ),
+      appBar: AppBar(title: Text(AppStrings.get('import_words_title', lang))),
       body: state.isImporting && !state.genScenarios
           ? Center(
               child: Column(
@@ -33,8 +31,8 @@ class ImportScreen extends ConsumerWidget {
               ),
             )
           : state.previewWords.isEmpty
-              ? _buildFilePicker(context, ref, state, theme, lang)
-              : _buildPreview(context, ref, state, theme, lang),
+          ? _buildFilePicker(context, ref, state, theme, lang)
+          : _buildPreview(context, ref, state, theme, lang),
     );
   }
 
@@ -80,8 +78,11 @@ class ImportScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    Icon(Icons.error_outline,
-                        color: theme.colorScheme.error, size: 20),
+                    Icon(
+                      Icons.error_outline,
+                      color: theme.colorScheme.error,
+                      size: 20,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -103,11 +104,16 @@ class ImportScreen extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.library_books,
-                        color: theme.colorScheme.primary, size: 20),
+                    Icon(
+                      Icons.library_books,
+                      color: theme.colorScheme.primary,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
-                    Text(AppStrings.get('built_in_books', lang),
-                        style: theme.textTheme.titleSmall),
+                    Text(
+                      AppStrings.get('built_in_books', lang),
+                      style: theme.textTheme.titleSmall,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -119,7 +125,8 @@ class ImportScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 ...builtInBooks.map(
-                    (book) => _builtInBookCard(context, ref, book, theme)),
+                  (book) => _builtInBookCard(context, ref, book, theme, lang),
+                ),
                 const SizedBox(height: 28),
                 Row(
                   children: [
@@ -129,8 +136,9 @@ class ImportScreen extends ConsumerWidget {
                       child: Text(
                         AppStrings.get('or_import_file', lang),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.5),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ),
                     ),
@@ -164,17 +172,17 @@ class ImportScreen extends ConsumerWidget {
     WidgetRef ref,
     BuiltInWordBook book,
     ThemeData theme,
+    String lang,
   ) {
-    final lang = ref.watch(languageProvider);
+    final displayName = AppStrings.get(book.nameKey, lang);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          ref.read(importStateProvider.notifier).loadBuiltInBook(
-            book.assetPath,
-            book.name,
-          );
+          ref
+              .read(importStateProvider.notifier)
+              .loadBuiltInBook(book.assetPath, displayName);
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -199,16 +207,22 @@ class ImportScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      book.name,
+                      displayName,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      AppStrings.get('n_words', lang, params: {'count': book.wordCount.toString()}),
+                      AppStrings.get(
+                        'n_words',
+                        lang,
+                        params: {'count': book.wordCount.toString()},
+                      ),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.6,
+                        ),
                       ),
                     ),
                   ],
@@ -266,7 +280,11 @@ class ImportScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  AppStrings.get('n_words_found', lang, params: {'count': state.wordCount.toString()}),
+                  AppStrings.get(
+                    'n_words_found',
+                    lang,
+                    params: {'count': state.wordCount.toString()},
+                  ),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -324,7 +342,11 @@ class ImportScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  AppStrings.get('splits_into', lang, params: {'count': state.listCount.toString()}),
+                  AppStrings.get(
+                    'splits_into',
+                    lang,
+                    params: {'count': state.listCount.toString()},
+                  ),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
@@ -340,24 +362,41 @@ class ImportScreen extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('5', style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
-                    Text('100', style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                    Text(
+                      '5',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.4,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '100',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.4,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning_amber_rounded, size: 16,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         AppStrings.get('list_size_warning', lang),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ),
                     ),
@@ -406,14 +445,22 @@ class ImportScreen extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('50%',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.5))),
-                    Text('100%',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.5))),
+                    Text(
+                      '50%',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.5,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '100%',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.5,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -444,7 +491,9 @@ class ImportScreen extends ConsumerWidget {
         ),
 
         // Show scenario generation progress during import
-        if (state.isImporting && state.genScenarios && state.scenariosTotal > 0) ...[
+        if (state.isImporting &&
+            state.genScenarios &&
+            state.scenariosTotal > 0) ...[
           const SizedBox(height: 12),
           Card(
             color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
@@ -460,10 +509,14 @@ class ImportScreen extends ConsumerWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      AppStrings.get('gen_scenarios_progress', lang, params: {
-                        'done': state.scenariosDone.toString(),
-                        'total': state.scenariosTotal.toString(),
-                      }),
+                      AppStrings.get(
+                        'gen_scenarios_progress',
+                        lang,
+                        params: {
+                          'done': state.scenariosDone.toString(),
+                          'total': state.scenariosTotal.toString(),
+                        },
+                      ),
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
@@ -478,13 +531,19 @@ class ImportScreen extends ConsumerWidget {
         // Preview header
         Row(
           children: [
-            Text(AppStrings.get('preview', lang),
-                style: theme.textTheme.titleSmall),
+            Text(
+              AppStrings.get('preview', lang),
+              style: theme.textTheme.titleSmall,
+            ),
             const Spacer(),
             if (hasMore)
               TextButton(
                 onPressed: () => notifier.toggleShowAllPreview(),
-                child: Text(state.showAllPreview ? AppStrings.get('show_less', lang) : AppStrings.get('show_all', lang)),
+                child: Text(
+                  state.showAllPreview
+                      ? AppStrings.get('show_less', lang)
+                      : AppStrings.get('show_all', lang),
+                ),
               ),
           ],
         ),
@@ -504,16 +563,20 @@ class ImportScreen extends ConsumerWidget {
                 DataColumn(label: Text('#')),
                 DataColumn(label: Text(AppStrings.get('english_col', lang))),
                 DataColumn(label: Text(AppStrings.get('chinese_col', lang))),
-                DataColumn(label: Text(AppStrings.get('pronunciation_col', lang))),
+                DataColumn(
+                  label: Text(AppStrings.get('pronunciation_col', lang)),
+                ),
               ],
               rows: List.generate(displayed.length, (i) {
                 final w = displayed[i];
-                return DataRow(cells: [
-                  DataCell(Text('${i + 1}')),
-                  DataCell(Text(w.english)),
-                  DataCell(Text(w.chineseMeanings)),
-                  DataCell(Text(w.pronunciation ?? '-')),
-                ]);
+                return DataRow(
+                  cells: [
+                    DataCell(Text('${i + 1}')),
+                    DataCell(Text(w.english)),
+                    DataCell(Text(w.chineseMeanings)),
+                    DataCell(Text(w.pronunciation ?? '-')),
+                  ],
+                );
               }),
             ),
           ),
@@ -523,7 +586,11 @@ class ImportScreen extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              AppStrings.get('more_words', lang, params: {'count': (state.wordCount - 10).toString()}),
+              AppStrings.get(
+                'more_words',
+                lang,
+                params: {'count': (state.wordCount - 10).toString()},
+              ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
@@ -559,13 +626,20 @@ class ImportScreen extends ConsumerWidget {
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Icon(Icons.cloud_upload_outlined),
-          label: Text(state.isImporting
-              ? AppStrings.get('importing', lang)
-              : AppStrings.get('import_n_words', lang,
-                  params: {'count': state.wordCount.toString()})),
+          label: Text(
+            state.isImporting
+                ? AppStrings.get('importing', lang)
+                : AppStrings.get(
+                    'import_n_words',
+                    lang,
+                    params: {'count': state.wordCount.toString()},
+                  ),
+          ),
         ),
 
         const SizedBox(height: 32),
@@ -573,15 +647,21 @@ class ImportScreen extends ConsumerWidget {
     );
   }
 
-  Widget _errorCard(BuildContext context, String message, VoidCallback onDismiss) {
+  Widget _errorCard(
+    BuildContext context,
+    String message,
+    VoidCallback onDismiss,
+  ) {
     return Card(
       color: Theme.of(context).colorScheme.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.error_outline,
-                color: Theme.of(context).colorScheme.error),
+            Icon(
+              Icons.error_outline,
+              color: Theme.of(context).colorScheme.error,
+            ),
             const SizedBox(width: 12),
             Expanded(child: Text(message)),
             IconButton(

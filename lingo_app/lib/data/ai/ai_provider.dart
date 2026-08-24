@@ -7,7 +7,10 @@ abstract class AiProvider {
 
   AiUsage? get lastUsage;
 
-  Future<List<Collocation>> generateCollocations(List<String> words);
+  Future<List<Collocation>> generateCollocations(
+    List<String> words, {
+    Map<String, String> targetMeanings = const {},
+  });
 
   /// Selects only safe wrong options from a locally supplied candidate pool.
   /// This is called in batches while content is generated, then cached for

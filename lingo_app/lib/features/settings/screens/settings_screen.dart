@@ -4,15 +4,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/i18n/app_strings.dart';
-import '../../../core/services/tts_model_state.dart';
+import '../../../core/services/remote_example_audio_client.dart';
+import '../../../core/services/remote_word_audio_client.dart';
+import '../../../core/services/tts_adapters/qwen3_tts_adapter.dart';
+import '../../../core/services/tts_adapters/qwen_tts_adapter.dart';
+import '../../../core/services/tts_adapters/tencent_tts_adapter.dart';
 import '../../../core/services/tts_providers.dart';
 import '../../../core/services/tts_service.dart';
+import '../../../core/services/word_audio_release_service.dart';
 import '../../../data/ai/ai_provider.dart';
 import '../../../data/ai/ai_service.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/language_tool/language_tool_client.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/repositories.dart';
+import '../services/word_audio_release_job.dart';
+import 'word_audio_repair_screen.dart';
 
 final _aiServiceProvider = Provider<AiService>((ref) {
   return AiService(ref.watch(settingsRepositoryProvider));
@@ -23,13 +30,13 @@ final _aiUsageSummaryProvider = FutureProvider.autoDispose((ref) {
 });
 
 final _ttsUsageSummaryProvider = FutureProvider.autoDispose((ref) {
-  return ref.watch(ttsRepositoryProvider).getUsageSummary(provider: 'doubao');
+  return ref.watch(ttsRepositoryProvider).getUsageSummary(provider: 'qwen');
 });
 
 final _ttsRecentUsageRecordsProvider = FutureProvider.autoDispose((ref) {
   return ref
       .watch(ttsRepositoryProvider)
-      .getRecentUsageRecords(provider: 'doubao', limit: 20);
+      .getRecentUsageRecords(provider: 'qwen', limit: 20);
 });
 
 class _TtsWordCacheFailure {
@@ -80,35 +87,44 @@ final _ttsCacheMaintenanceProvider =
 class _TtsCacheMaintenanceState {
   final bool isChecking;
   final bool isCleaning;
+  final bool isApplyingLimit;
   final TtsCacheHealthReport? report;
   final TtsCacheCleanupResult? cleanupResult;
+  final TtsCacheLimitResult? limitResult;
   final String? error;
 
   const _TtsCacheMaintenanceState({
     this.isChecking = false,
     this.isCleaning = false,
+    this.isApplyingLimit = false,
     this.report,
     this.cleanupResult,
+    this.limitResult,
     this.error,
   });
 
   _TtsCacheMaintenanceState copyWith({
     bool? isChecking,
     bool? isCleaning,
+    bool? isApplyingLimit,
     TtsCacheHealthReport? report,
     bool clearReport = false,
     TtsCacheCleanupResult? cleanupResult,
     bool clearCleanupResult = false,
+    TtsCacheLimitResult? limitResult,
+    bool clearLimitResult = false,
     String? error,
     bool clearError = false,
   }) {
     return _TtsCacheMaintenanceState(
       isChecking: isChecking ?? this.isChecking,
       isCleaning: isCleaning ?? this.isCleaning,
+      isApplyingLimit: isApplyingLimit ?? this.isApplyingLimit,
       report: clearReport ? null : report ?? this.report,
       cleanupResult: clearCleanupResult
           ? null
           : cleanupResult ?? this.cleanupResult,
+      limitResult: clearLimitResult ? null : limitResult ?? this.limitResult,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -122,12 +138,12 @@ class _TtsCacheMaintenanceController
   final Ref _ref;
 
   Future<void> refreshCacheHealth() async {
-    if (state.isChecking || state.isCleaning) return;
+    if (state.isChecking || state.isCleaning || state.isApplyingLimit) return;
     state = state.copyWith(isChecking: true, clearError: true);
     try {
       final report = await _ref
           .read(ttsServiceProvider)
-          .inspectCacheHealth(provider: 'doubao', language: 'en');
+          .inspectCacheHealth(provider: 'qwen', language: 'en');
       if (mounted) {
         state = state.copyWith(
           isChecking: false,
@@ -143,12 +159,12 @@ class _TtsCacheMaintenanceController
   }
 
   Future<void> cleanExpiredCache(String lang) async {
-    if (state.isCleaning || state.isChecking) return;
+    if (state.isCleaning || state.isChecking || state.isApplyingLimit) return;
     state = state.copyWith(isCleaning: true, clearError: true);
     try {
       final result = await _ref
           .read(ttsServiceProvider)
-          .cleanExpiredCache(provider: 'doubao', language: 'en');
+          .cleanExpiredCache(provider: 'qwen', language: 'en');
       if (mounted) {
         state = state.copyWith(
           isCleaning: false,
@@ -163,6 +179,38 @@ class _TtsCacheMaintenanceController
     } catch (e) {
       if (mounted) {
         state = state.copyWith(isCleaning: false, error: _formatTtsError(e));
+      }
+    }
+  }
+
+  Future<void> applyCacheLimit(String lang) async {
+    if (state.isCleaning || state.isChecking || state.isApplyingLimit) return;
+    state = state.copyWith(
+      isApplyingLimit: true,
+      clearError: true,
+      clearLimitResult: true,
+    );
+    try {
+      final result = await _ref
+          .read(ttsServiceProvider)
+          .enforceCacheLimit(provider: 'qwen', language: 'en');
+      if (mounted) {
+        state = state.copyWith(
+          isApplyingLimit: false,
+          limitResult: result,
+          clearError: true,
+        );
+      }
+      await refreshCacheHealth();
+      await _ref
+          .read(_ttsPreCacheJobProvider.notifier)
+          .refreshCacheStatus(lang);
+    } catch (e) {
+      if (mounted) {
+        state = state.copyWith(
+          isApplyingLimit: false,
+          error: _formatTtsError(e),
+        );
       }
     }
   }
@@ -227,7 +275,7 @@ class _TtsPreCacheJobController extends StateNotifier<_TtsPreCacheJobState> {
   final Ref _ref;
   bool _cancelRequested = false;
 
-  Future<void> startCet4Doubao({
+  Future<void> startCet4Qwen({
     required String apiKey,
     required String baseUrl,
     required String model,
@@ -242,6 +290,13 @@ class _TtsPreCacheJobController extends StateNotifier<_TtsPreCacheJobState> {
     if (apiKey.trim().isEmpty) {
       state = state.copyWith(
         error: AppStrings.get('tts_precache_need_api_key', lang),
+        clearResult: true,
+      );
+      return;
+    }
+    if (resourceId.trim().isEmpty) {
+      state = state.copyWith(
+        error: AppStrings.get('tts_precache_need_workspace_id', lang),
         clearResult: true,
       );
       return;
@@ -299,7 +354,7 @@ class _TtsPreCacheJobController extends StateNotifier<_TtsPreCacheJobState> {
       final result = await _ref
           .read(ttsServiceProvider)
           .preCacheCloudConfig(
-            provider: 'doubao',
+            provider: 'qwen',
             apiKey: apiKey.trim(),
             baseUrl: baseUrl.trim(),
             model: model.trim(),
@@ -431,10 +486,10 @@ class _TtsPreCacheJobController extends StateNotifier<_TtsPreCacheJobState> {
     }
     final presence = await _ref
         .read(ttsServiceProvider)
-        .getCachedAudioPresence(allTexts, provider: 'doubao', lang: 'en');
+        .getCachedAudioPresence(allTexts, provider: 'qwen', lang: 'en');
     final cacheRecords = await _ref
         .read(ttsRepositoryProvider)
-        .getCacheRecords(provider: 'doubao', language: 'en');
+        .getCacheRecords(provider: 'qwen', language: 'en');
     final failuresByText = {
       for (final record in cacheRecords)
         if (record.status == 'failed')
@@ -499,6 +554,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _ttsVoiceController = TextEditingController();
   final _ttsAppIdController = TextEditingController();
   final _ttsPreCacheListCountController = TextEditingController();
+  final _ttsCacheLimitMbController = TextEditingController();
+  final _wordAudioServerBaseUrlController = TextEditingController();
   final _aiBaseUrlController = TextEditingController();
   final _aiModelController = TextEditingController();
   final _languageToolBaseUrlController = TextEditingController();
@@ -511,9 +568,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _selectedProvider;
   double _passThreshold = AppConstants.defaultPassThreshold;
   String _themeMode = 'system';
-  double _ttsSpeed = 0.5;
   String _language = 'en';
-  String _ttsProvider = 'sapi';
+  String _ttsProvider = 'qwen';
+  String _wordAudioPlaybackSource = TtsService.remoteWordPlaybackSource;
+  String _exampleAudioPlaybackSource =
+      TtsService.configuredTtsExamplePlaybackSource;
+  Set<int>? _wordAudioReleaseListIds;
+  Set<int>? _qwen3ExampleAudioReleaseListIds;
+  Set<int>? _tencentWeWinnyExampleAudioReleaseListIds;
   bool _ttsDoubaoLiveApiEnabled = true;
   bool _aiCollocationOptionValidationEnabled = true;
   bool _languageToolEnabled = true;
@@ -521,15 +583,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _languageToolTestResult;
   bool _loaded = false;
 
-  static const _ttsPreCacheListCountKey = 'tts_doubao_precache_list_count';
+  static const _ttsPreCacheListCountKey = 'tts_qwen_precache_list_count';
   static const _ttsDoubaoLiveApiEnabledKey = 'tts_doubao_live_api_enabled';
-  static const _defaultTtsPreCacheListCount = 30;
+  static const _defaultTtsPreCacheListCount = 1;
 
   static const _ttsProviderValues = {
-    'supertonic',
     'qwen',
+    TtsService.qwen3FlashKaterinaProvider,
     'doubao',
-    'sapi',
     'openai',
   };
 
@@ -542,6 +603,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _ttsVoiceController.dispose();
     _ttsAppIdController.dispose();
     _ttsPreCacheListCountController.dispose();
+    _ttsCacheLimitMbController.dispose();
+    _wordAudioServerBaseUrlController.dispose();
     _aiBaseUrlController.dispose();
     _aiModelController.dispose();
     _languageToolBaseUrlController.dispose();
@@ -554,36 +617,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final apiKey = await settingsRepo.getAiApiKey();
     final threshold = await settingsRepo.getPassThreshold();
     final themeMode = await settingsRepo.getString('theme_mode');
-    final ttsSpeed = await settingsRepo.getDouble('tts_speed');
     final lang = await settingsRepo.getAppLanguage();
     final ttsProvider = await settingsRepo.getTtsProvider();
-    final ttsNs =
-        (ttsProvider != null &&
-            ttsProvider != 'none' &&
-            ttsProvider != 'sapi' &&
-            ttsProvider != 'supertonic')
-        ? ttsProvider
-        : null;
-    final ttsApiKey = ttsNs != null
-        ? await settingsRepo.getString('tts_${ttsNs}_api_key')
-        : null;
-    final ttsBaseUrl = ttsNs != null
-        ? await settingsRepo.getString('tts_${ttsNs}_base_url')
-        : null;
-    final ttsModel = ttsNs != null
-        ? await settingsRepo.getString('tts_${ttsNs}_model')
-        : null;
-    final ttsVoice = ttsNs != null
-        ? await settingsRepo.getString('tts_${ttsNs}_voice')
-        : null;
-    final ttsAppId = ttsNs != null
-        ? await settingsRepo.getString('tts_${ttsNs}_app_id')
-        : null;
+    final normalizedTtsProvider = _normalizeTtsProvider(ttsProvider);
+    final ttsSettingsNamespace = _ttsSettingsNamespace(normalizedTtsProvider);
+    final ttsApiKey = await settingsRepo.getString(
+      'tts_${ttsSettingsNamespace}_api_key',
+    );
+    final ttsBaseUrl = await settingsRepo.getString(
+      'tts_${ttsSettingsNamespace}_base_url',
+    );
+    final ttsModel = await settingsRepo.getString(
+      'tts_${ttsSettingsNamespace}_model',
+    );
+    final ttsVoice = await settingsRepo.getString(
+      'tts_${ttsSettingsNamespace}_voice',
+    );
+    final ttsAppId = await settingsRepo.getString(
+      'tts_${ttsSettingsNamespace}_app_id',
+    );
     final ttsPreCacheListCount = await settingsRepo.getInt(
       _ttsPreCacheListCountKey,
     );
+    final ttsCacheLimitMb = await settingsRepo.getInt(
+      TtsService.qwenCacheLimitSettingKey,
+    );
     final ttsDoubaoLiveApiEnabled = await settingsRepo.getString(
       _ttsDoubaoLiveApiEnabledKey,
+    );
+    final wordAudioServerBaseUrl = await settingsRepo.getString(
+      SettingsRepository.keyRemoteWordAudioBaseUrl,
+    );
+    final wordAudioPlaybackSource = await settingsRepo.getString(
+      SettingsRepository.keyWordAudioPlaybackSource,
+    );
+    final exampleAudioPlaybackSource = await settingsRepo.getString(
+      SettingsRepository.keyExampleAudioPlaybackSource,
     );
     final aiBaseUrl = await settingsRepo.getAiBaseUrl();
     final aiModel = await settingsRepo.getAiModel();
@@ -598,16 +667,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _apiKeyController.text = apiKey ?? '';
         _passThreshold = threshold;
         _themeMode = themeMode ?? 'system';
-        _ttsSpeed = ttsSpeed ?? 0.6;
         _language = lang ?? 'en';
-        _ttsProvider = _normalizeTtsProvider(ttsProvider);
+        _ttsProvider = normalizedTtsProvider;
         _ttsApiKeyController.text = ttsApiKey ?? '';
         _ttsBaseUrlController.text = ttsBaseUrl ?? '';
-        _ttsModelController.text = ttsModel ?? '';
-        _ttsVoiceController.text = ttsVoice ?? '';
+        _ttsModelController.text = _modelForTtsProvider(
+          normalizedTtsProvider,
+          ttsModel,
+        );
+        _ttsVoiceController.text = _voiceForTtsProvider(
+          normalizedTtsProvider,
+          ttsVoice,
+        );
         _ttsAppIdController.text = ttsAppId ?? '';
         _ttsPreCacheListCountController.text =
             (ttsPreCacheListCount ?? _defaultTtsPreCacheListCount).toString();
+        _ttsCacheLimitMbController.text =
+            (ttsCacheLimitMb ?? TtsService.defaultQwenCacheLimitMb).toString();
+        _wordAudioServerBaseUrlController.text = wordAudioServerBaseUrl ?? '';
+        _wordAudioPlaybackSource = TtsService.normalizeWordPlaybackSource(
+          wordAudioPlaybackSource,
+        );
+        _exampleAudioPlaybackSource = TtsService.normalizeExamplePlaybackSource(
+          exampleAudioPlaybackSource,
+        );
         _ttsDoubaoLiveApiEnabled = ttsDoubaoLiveApiEnabled != 'false';
         _aiBaseUrlController.text = aiBaseUrl ?? '';
         _aiModelController.text = aiModel ?? '';
@@ -618,14 +701,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             languageToolBaseUrl ?? LanguageToolClient.defaultBaseUrl;
         _loaded = true;
       });
-      if (_normalizeTtsProvider(ttsProvider) == 'doubao') {
+      if (normalizedTtsProvider == 'qwen') {
         await ref
             .read(_ttsPreCacheJobProvider.notifier)
             .refreshCacheStatus(lang ?? 'en');
         await ref
             .read(_ttsCacheMaintenanceProvider.notifier)
             .refreshCacheHealth();
+        await ref.read(wordAudioReleaseJobProvider.notifier).refreshLists();
+        await ref
+            .read(wordAudioReleaseJobProvider.notifier)
+            .loadLatestPackage();
+      } else if (normalizedTtsProvider ==
+          TtsService.qwen3FlashKaterinaProvider) {
+        await ref
+            .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+            .refreshLists();
+        await ref
+            .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+            .refreshCacheStatuses();
+        await ref
+            .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+            .loadLatestPackage();
       }
+      await ref
+          .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+          .refreshLists();
+      await ref
+          .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+          .refreshCacheStatuses();
+      await ref
+          .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+          .loadLatestPackage();
     }
   }
 
@@ -703,10 +810,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.read(themeModeProvider.notifier).state = newMode;
   }
 
-  Future<void> _saveTtsSpeed(double value) async {
-    setState(() => _ttsSpeed = value);
-    await ref.read(settingsRepositoryProvider).setTtsSpeed(value);
-    await ref.read(ttsServiceProvider).reloadSettings();
+  Future<void> _saveWordAudioServerBaseUrl(
+    BuildContext context,
+    String lang,
+  ) async {
+    final rawBaseUrl = _wordAudioServerBaseUrlController.text.trim();
+    try {
+      final baseUrl = rawBaseUrl.isEmpty
+          ? ''
+          : RemoteWordAudioClient.normalizeBaseUrl(rawBaseUrl);
+      await ref
+          .read(settingsRepositoryProvider)
+          .setString(SettingsRepository.keyRemoteWordAudioBaseUrl, baseUrl);
+      if (mounted) {
+        _wordAudioServerBaseUrlController.text = baseUrl;
+      }
+      await ref.read(ttsServiceProvider).reloadSettings();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppStrings.get('settings_saved', lang)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } on RemoteWordAudioException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppStrings.get('word_audio_server_invalid_address', lang),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveWordAudioPlaybackSource(String value) async {
+    final normalized = TtsService.normalizeWordPlaybackSource(value);
+    setState(() => _wordAudioPlaybackSource = normalized);
+    await ref
+        .read(settingsRepositoryProvider)
+        .setString(SettingsRepository.keyWordAudioPlaybackSource, normalized);
+  }
+
+  Future<void> _saveExampleAudioPlaybackSource(String value) async {
+    final normalized = TtsService.normalizeExamplePlaybackSource(value);
+    setState(() => _exampleAudioPlaybackSource = normalized);
+    await ref
+        .read(settingsRepositoryProvider)
+        .setString(
+          SettingsRepository.keyExampleAudioPlaybackSource,
+          normalized,
+        );
   }
 
   Future<void> _saveTtsProvider(String value) async {
@@ -718,21 +875,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Load the new engine's saved config (or blank)
     await _loadTtsConfigFor(normalized);
     await ref.read(ttsServiceProvider).reloadSettings();
-    if (normalized == 'doubao') {
+    if (normalized == 'qwen') {
       await ref
           .read(_ttsPreCacheJobProvider.notifier)
           .refreshCacheStatus(_language);
       await ref
           .read(_ttsCacheMaintenanceProvider.notifier)
           .refreshCacheHealth();
+      await ref.read(wordAudioReleaseJobProvider.notifier).refreshLists();
+      await ref.read(wordAudioReleaseJobProvider.notifier).loadLatestPackage();
+    } else if (normalized == TtsService.qwen3FlashKaterinaProvider) {
+      await ref
+          .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+          .refreshLists();
+      await ref
+          .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+          .refreshCacheStatuses();
+      await ref
+          .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+          .loadLatestPackage();
     }
   }
 
   String _normalizeTtsProvider(String? provider) {
-    if (provider == null || provider == 'none') {
-      return 'sapi';
-    }
-    return _ttsProviderValues.contains(provider) ? provider : 'sapi';
+    return _ttsProviderValues.contains(provider) ? provider! : 'qwen';
+  }
+
+  bool _isQwenTtsProfile(String provider) {
+    return provider == 'qwen' ||
+        provider == TtsService.qwen3FlashKaterinaProvider;
+  }
+
+  String _ttsSettingsNamespace(String provider) {
+    return provider == TtsService.qwen3FlashKaterinaProvider
+        ? 'qwen'
+        : provider;
+  }
+
+  String _modelForTtsProvider(String provider, String? savedModel) {
+    return switch (provider) {
+      'qwen' => QwenTtsAdapter.wordModel,
+      TtsService.qwen3FlashKaterinaProvider => Qwen3TtsAdapter.flashModel,
+      _ => savedModel ?? '',
+    };
+  }
+
+  String _voiceForTtsProvider(String provider, String? savedVoice) {
+    return switch (provider) {
+      'qwen' => QwenTtsAdapter.wordVoice,
+      TtsService.qwen3FlashKaterinaProvider => Qwen3TtsAdapter.flashVoice,
+      _ => savedVoice ?? '',
+    };
   }
 
   Widget _ttsProviderChip({required String value, required String label}) {
@@ -743,25 +936,134 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  String _ttsProfileTitle(String lang) {
+    return switch (_ttsProvider) {
+      'qwen' => AppStrings.get('tts_qwen_title', lang),
+      TtsService.qwen3FlashKaterinaProvider => AppStrings.get(
+        'tts_qwen3_flash_katerina_title',
+        lang,
+      ),
+      'openai' => AppStrings.get('tts_openai_title', lang),
+      _ => AppStrings.get('tts_doubao_title', lang),
+    };
+  }
+
+  String _ttsBaseUrlHint() {
+    return switch (_ttsProvider) {
+      'qwen' || TtsService.qwen3FlashKaterinaProvider =>
+        'https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com',
+      'openai' => 'https://api.openai.com',
+      _ => 'https://openspeech.bytedance.com',
+    };
+  }
+
+  String _ttsModelHint() {
+    return switch (_ttsProvider) {
+      'qwen' => QwenTtsAdapter.wordModel,
+      TtsService.qwen3FlashKaterinaProvider => Qwen3TtsAdapter.flashModel,
+      'doubao' => 'seed-tts-2.0-standard',
+      _ => 'tts-1',
+    };
+  }
+
+  String _ttsVoiceHint() {
+    return switch (_ttsProvider) {
+      'qwen' => QwenTtsAdapter.wordVoice,
+      TtsService.qwen3FlashKaterinaProvider => Qwen3TtsAdapter.flashVoice,
+      'doubao' => 'zh_female_tiexinnvsheng_mars_bigtts',
+      _ => 'alloy',
+    };
+  }
+
+  Widget _qwenTtsProfileSummary(ThemeData theme, String lang) {
+    final isFlashKaterina =
+        _ttsProvider == TtsService.qwen3FlashKaterinaProvider;
+    final titleKey = isFlashKaterina
+        ? 'tts_qwen3_flash_katerina_title'
+        : 'tts_qwen_word_preset_title';
+    final descriptionKey = isFlashKaterina
+        ? 'tts_qwen3_flash_katerina_desc'
+        : 'tts_qwen_word_preset_desc';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isFlashKaterina
+                ? Icons.auto_awesome_outlined
+                : Icons.record_voice_over_outlined,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppStrings.get(titleKey, lang),
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  AppStrings.get(descriptionKey, lang),
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${AppStrings.get('tts_model_label', lang)}: '
+                  '${_ttsModelController.text}',
+                  style: theme.textTheme.labelMedium,
+                ),
+                Text(
+                  '${AppStrings.get('tts_voice_label', lang)}: '
+                  '${_ttsVoiceController.text}',
+                  style: theme.textTheme.labelMedium,
+                ),
+                if (isFlashKaterina)
+                  Text(
+                    '${AppStrings.get('tts_instruction_label', lang)}: '
+                    '${AppStrings.get('tts_qwen3_flash_katerina_instruction', lang)}',
+                    style: theme.textTheme.labelMedium,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Persist current UI fields under the active provider's namespace.
   Future<void> _flushCurrentTtsConfig() async {
-    if (_ttsProvider == 'sapi' || _ttsProvider == 'supertonic') return;
     final repo = ref.read(settingsRepositoryProvider);
-    final ns = _ttsProvider;
+    final ns = _ttsSettingsNamespace(_ttsProvider);
     await repo.setString('tts_${ns}_api_key', _ttsApiKeyController.text.trim());
     await repo.setString(
       'tts_${ns}_base_url',
       _ttsBaseUrlController.text.trim(),
     );
-    await repo.setString('tts_${ns}_model', _ttsModelController.text.trim());
-    await repo.setString('tts_${ns}_voice', _ttsVoiceController.text.trim());
+    if (!_isQwenTtsProfile(_ttsProvider)) {
+      await repo.setString('tts_${ns}_model', _ttsModelController.text.trim());
+      await repo.setString('tts_${ns}_voice', _ttsVoiceController.text.trim());
+    }
     await repo.setString('tts_${ns}_app_id', _ttsAppIdController.text.trim());
   }
 
   /// Load saved config for [provider] into the UI fields.
   Future<void> _loadTtsConfigFor(String provider) async {
     final repo = ref.read(settingsRepositoryProvider);
-    final ns = provider;
+    final ns = _ttsSettingsNamespace(provider);
     final apiKey = (await repo.getString('tts_${ns}_api_key')) ?? '';
     final baseUrl = (await repo.getString('tts_${ns}_base_url')) ?? '';
     final model = (await repo.getString('tts_${ns}_model')) ?? '';
@@ -770,8 +1072,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _ttsApiKeyController.text = apiKey;
       _ttsBaseUrlController.text = baseUrl;
-      _ttsModelController.text = model;
-      _ttsVoiceController.text = voice;
+      _ttsModelController.text = _modelForTtsProvider(provider, model);
+      _ttsVoiceController.text = _voiceForTtsProvider(provider, voice);
       _ttsAppIdController.text = appId;
     });
   }
@@ -810,6 +1112,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return count;
   }
 
+  Future<void> _saveTtsCacheLimitMb(String value) async {
+    setState(() {});
+    final megabytes = int.tryParse(value.trim());
+    if (megabytes != null && megabytes >= 0) {
+      await ref
+          .read(settingsRepositoryProvider)
+          .setInt(TtsService.qwenCacheLimitSettingKey, megabytes);
+    }
+  }
+
+  int? _ttsCacheLimitMb() {
+    final megabytes = int.tryParse(_ttsCacheLimitMbController.text.trim());
+    return megabytes != null && megabytes >= 0 ? megabytes : null;
+  }
+
+  Future<void> _applyTtsCacheLimit(String lang) async {
+    final megabytes = _ttsCacheLimitMb();
+    if (megabytes == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppStrings.get('tts_cache_limit_invalid', lang)),
+          ),
+        );
+      }
+      return;
+    }
+    await _saveTtsCacheLimitMb(megabytes.toString());
+    await ref.read(_ttsCacheMaintenanceProvider.notifier).applyCacheLimit(lang);
+  }
+
   Future<void> _testTts(BuildContext context, String lang) async {
     setState(() {
       _isTtsTesting = true;
@@ -827,7 +1160,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             voice: _ttsVoiceController.text.trim(),
             resourceId: _ttsAppIdController.text.trim(),
             text: 'test',
-            lang: lang,
+            lang: _isQwenTtsProfile(_ttsProvider) ? 'en' : lang,
           );
       if (mounted) setState(() => _ttsTestResult = 'success');
     } catch (e) {
@@ -852,7 +1185,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return text.startsWith('Exception: ') ? text.substring(11) : text;
   }
 
-  Future<void> _preCacheCet4Doubao(
+  Future<void> _preCacheCet4Qwen(
     String lang, {
     bool onlyIncomplete = false,
     int? targetListId,
@@ -865,7 +1198,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
     await ref
         .read(_ttsPreCacheJobProvider.notifier)
-        .startCet4Doubao(
+        .startCet4Qwen(
           apiKey: _ttsApiKeyController.text,
           baseUrl: _ttsBaseUrlController.text,
           model: _ttsModelController.text,
@@ -878,16 +1211,1120 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
   }
 
+  List<WordAudioReleaseListOption> _selectedWordAudioReleaseLists(
+    WordAudioReleaseJobState job,
+  ) {
+    final selectedIds = _wordAudioReleaseListIds;
+    if (selectedIds == null) {
+      return job.lists.isEmpty ? const [] : [job.lists.first];
+    }
+    return job.lists
+        .where((item) => selectedIds.contains(item.id))
+        .toList(growable: false);
+  }
+
+  Set<int> _fullyCachedListIds(_TtsPreCacheJobState job) {
+    return {
+      for (final status in job.cacheStatuses)
+        if (status.isComplete) status.listId,
+    };
+  }
+
+  bool _wordAudioReleasePlanMatchesSelection(
+    WordAudioReleasePlan? plan,
+    List<WordAudioReleaseListOption> selected,
+  ) {
+    if (plan == null || plan.listIds.length != selected.length) return false;
+    final selectedIds = selected.map((item) => item.id).toSet();
+    return plan.listIds.every(selectedIds.contains);
+  }
+
+  String _wordAudioReleaseSelectedListsText(
+    String lang,
+    Iterable<int> listNumbers,
+  ) {
+    final numbers = listNumbers.toList(growable: false);
+    return AppStrings.get(
+      'word_audio_release_selected_lists',
+      lang,
+      params: {'count': numbers.length.toString(), 'lists': numbers.join(', ')},
+    );
+  }
+
+  String _wordAudioReleaseSelectionLabel(
+    String lang,
+    List<WordAudioReleaseListOption> selected,
+  ) {
+    if (selected.isEmpty) {
+      return AppStrings.get('word_audio_release_no_selection', lang);
+    }
+    if (selected.length == 1) {
+      final item = selected.single;
+      return AppStrings.get(
+        'word_audio_release_list_option',
+        lang,
+        params: {
+          'index': item.listNumber.toString(),
+          'name': item.name,
+          'count': item.wordCount.toString(),
+        },
+      );
+    }
+    return _wordAudioReleaseSelectedListsText(
+      lang,
+      selected.map((item) => item.listNumber),
+    );
+  }
+
+  String _wordAudioReleaseListStatusText(
+    String lang,
+    _TtsListCacheStatus? cacheStatus, {
+    required WordAudioServerListStatus? serverStatus,
+  }) {
+    final localStatus = cacheStatus == null
+        ? AppStrings.get('word_audio_release_list_cache_unknown', lang)
+        : cacheStatus.isComplete
+        ? AppStrings.get('word_audio_release_list_cached', lang)
+        : AppStrings.get(
+            'word_audio_release_list_cache_progress',
+            lang,
+            params: {
+              'cached': cacheStatus.cachedWords.toString(),
+              'total': cacheStatus.totalWords.toString(),
+            },
+          );
+    if (cacheStatus?.isComplete != true) return localStatus;
+
+    final remoteStatus = switch (serverStatus?.uploadState) {
+      WordAudioServerListUploadState.checking => AppStrings.get(
+        'word_audio_release_list_server_checking',
+        lang,
+        params: {
+          'checked': serverStatus!.checkedWords.toString(),
+          'total': serverStatus.totalWords.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.uploaded => AppStrings.get(
+        'word_audio_release_list_server_uploaded',
+        lang,
+        params: {
+          'uploaded': serverStatus!.uploadedWords.toString(),
+          'total': serverStatus.totalWords.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.notUploaded => AppStrings.get(
+        'word_audio_release_list_server_not_uploaded',
+        lang,
+        params: {'total': serverStatus!.totalWords.toString()},
+      ),
+      WordAudioServerListUploadState.partiallyUploaded => AppStrings.get(
+        'word_audio_release_list_server_partial',
+        lang,
+        params: {
+          'uploaded': serverStatus!.uploadedWords.toString(),
+          'total': serverStatus.totalWords.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.unavailable => AppStrings.get(
+        'word_audio_release_list_server_unavailable',
+        lang,
+      ),
+      null => AppStrings.get(
+        'word_audio_release_list_server_not_checked',
+        lang,
+      ),
+    };
+    return '$localStatus · $remoteStatus';
+  }
+
+  String _wordAudioReleaseServerFailureText(
+    String lang,
+    RemoteWordAudioFailure failure,
+  ) {
+    return AppStrings.get(switch (failure) {
+      RemoteWordAudioFailure.notConfigured =>
+        'word_audio_release_server_status_not_configured',
+      RemoteWordAudioFailure.invalidUrl =>
+        'word_audio_release_server_status_invalid_url',
+      _ => 'word_audio_release_server_status_failed',
+    }, lang);
+  }
+
+  String _qwen3ExampleReleaseListStatusText(
+    String lang,
+    WordAudioReleaseListCacheStatus? cacheStatus, {
+    required WordAudioServerListStatus? serverStatus,
+  }) {
+    final localStatus = cacheStatus == null
+        ? AppStrings.get('qwen3_example_audio_release_list_cache_unknown', lang)
+        : cacheStatus.isComplete
+        ? AppStrings.get('qwen3_example_audio_release_list_cached', lang)
+        : AppStrings.get(
+            'qwen3_example_audio_release_list_cache_progress',
+            lang,
+            params: {
+              'cached': cacheStatus.cachedItems.toString(),
+              'total': cacheStatus.totalItems.toString(),
+            },
+          );
+    if (cacheStatus?.isComplete != true) return localStatus;
+
+    final remoteStatus = switch (serverStatus?.uploadState) {
+      WordAudioServerListUploadState.checking => AppStrings.get(
+        'qwen3_example_audio_release_list_server_checking',
+        lang,
+        params: {
+          'checked': serverStatus!.checkedItems.toString(),
+          'total': serverStatus.totalItems.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.uploaded => AppStrings.get(
+        'qwen3_example_audio_release_list_server_uploaded',
+        lang,
+        params: {
+          'uploaded': serverStatus!.uploadedItems.toString(),
+          'total': serverStatus.totalItems.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.notUploaded => AppStrings.get(
+        'qwen3_example_audio_release_list_server_not_uploaded',
+        lang,
+        params: {'total': serverStatus!.totalItems.toString()},
+      ),
+      WordAudioServerListUploadState.partiallyUploaded => AppStrings.get(
+        'qwen3_example_audio_release_list_server_partial',
+        lang,
+        params: {
+          'uploaded': serverStatus!.uploadedItems.toString(),
+          'total': serverStatus.totalItems.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.unavailable => AppStrings.get(
+        'qwen3_example_audio_release_list_server_unavailable',
+        lang,
+      ),
+      null => AppStrings.get(
+        'qwen3_example_audio_release_list_server_not_checked',
+        lang,
+      ),
+    };
+    return '$localStatus · $remoteStatus';
+  }
+
+  String _qwen3ExampleReleaseServerFailureText(
+    String lang,
+    RemoteExampleAudioFailure failure,
+  ) {
+    return AppStrings.get(switch (failure) {
+      RemoteExampleAudioFailure.notConfigured =>
+        'qwen3_example_audio_release_server_status_not_configured',
+      RemoteExampleAudioFailure.invalidUrl =>
+        'qwen3_example_audio_release_server_status_invalid_url',
+      _ => 'qwen3_example_audio_release_server_status_failed',
+    }, lang);
+  }
+
+  String _compactWordAudioReleaseListNumbers(Iterable<int> values) {
+    final numbers = values.toSet().toList()..sort();
+    if (numbers.isEmpty) return '';
+
+    final groups = <String>[];
+    var start = numbers.first;
+    var end = start;
+    for (final number in numbers.skip(1)) {
+      if (number == end + 1) {
+        end = number;
+        continue;
+      }
+      groups.add(start == end ? '$start' : '$start–$end');
+      start = number;
+      end = number;
+    }
+    groups.add(start == end ? '$start' : '$start–$end');
+    return groups.join(', ');
+  }
+
+  List<int> _serverStatusListNumbers(
+    WordAudioReleaseJobState job,
+    WordAudioServerListUploadState status,
+  ) {
+    return [
+      for (final item in job.lists)
+        if (job.serverListStatuses[item.id]?.uploadState == status)
+          item.listNumber,
+    ];
+  }
+
+  Future<void> _chooseWordAudioReleaseLists(
+    String lang,
+    List<WordAudioReleaseListOption> options,
+    Map<int, _TtsListCacheStatus> cacheStatuses,
+    Map<int, WordAudioServerListStatus> serverListStatuses,
+  ) async {
+    if (options.isEmpty) return;
+    final initialIds = _wordAudioReleaseListIds == null
+        ? {options.first.id}
+        : {..._wordAudioReleaseListIds!};
+    final selected = await showDialog<Set<int>>(
+      context: context,
+      builder: (dialogContext) {
+        final draftIds = Set<int>.from(initialIds);
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text(
+              AppStrings.get('word_audio_release_select_lists', lang),
+            ),
+            content: SizedBox(
+              width: 420,
+              height: 360,
+              child: ListView(
+                children: [
+                  for (final item in options)
+                    CheckboxListTile(
+                      value: draftIds.contains(item.id),
+                      onChanged: (checked) => setDialogState(() {
+                        if (checked ?? false) {
+                          draftIds.add(item.id);
+                        } else {
+                          draftIds.remove(item.id);
+                        }
+                      }),
+                      title: Text(
+                        AppStrings.get(
+                          'word_audio_release_list_option',
+                          lang,
+                          params: {
+                            'index': item.listNumber.toString(),
+                            'name': item.name,
+                            'count': item.wordCount.toString(),
+                          },
+                        ),
+                      ),
+                      subtitle: Text(
+                        _wordAudioReleaseListStatusText(
+                          lang,
+                          cacheStatuses[item.id],
+                          serverStatus: serverListStatuses[item.id],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: options.isEmpty
+                    ? null
+                    : () => setDialogState(() {
+                        draftIds
+                          ..clear()
+                          ..addAll(options.map((item) => item.id));
+                      }),
+                child: Text(AppStrings.get('select_all', lang)),
+              ),
+              TextButton(
+                onPressed: () => setDialogState(draftIds.clear),
+                child: Text(AppStrings.get('deselect_all', lang)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(AppStrings.get('cancel', lang)),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(Set<int>.from(draftIds)),
+                child: Text(AppStrings.get('done', lang)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _wordAudioReleaseListIds = selected);
+  }
+
+  Future<void> _confirmWordAudioRelease(
+    String lang, {
+    required bool publish,
+  }) async {
+    final job = ref.read(wordAudioReleaseJobProvider);
+    final selected = _selectedWordAudioReleaseLists(job);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.get('word_audio_release_no_selection', lang),
+          ),
+        ),
+      );
+      return;
+    }
+    final plan = await ref
+        .read(wordAudioReleaseJobProvider.notifier)
+        .preparePlan(selected.map((item) => item.id).toList());
+    if (!mounted || plan == null) return;
+    if (plan.normalCalls > 0 && _ttsApiKeyController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.get('tts_precache_need_api_key', lang)),
+        ),
+      );
+      return;
+    }
+    if (plan.normalCalls > 0 && _ttsAppIdController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.get('tts_precache_need_workspace_id', lang)),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AppStrings.get('word_audio_release_confirm_title', lang)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AppStrings.get(
+                publish
+                    ? 'word_audio_release_confirm_publish_desc'
+                    : 'word_audio_release_confirm_generate_desc',
+                lang,
+                params: {
+                  'lists': _wordAudioReleaseSelectedListsText(
+                    lang,
+                    plan.listNumbers,
+                  ),
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get(
+                'word_audio_release_confirm_calls',
+                lang,
+                params: {
+                  'calls': plan.normalCalls.toString(),
+                  'attempts': plan.maxAttempts.toString(),
+                },
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              AppStrings.get(
+                'word_audio_release_confirm_cache',
+                lang,
+                params: {
+                  'reusable': plan.reusableWords.toString(),
+                  'total': plan.totalWords.toString(),
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(AppStrings.get('cancel', lang)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              AppStrings.get(
+                publish
+                    ? 'word_audio_release_confirm_publish'
+                    : 'word_audio_release_confirm_generate',
+                lang,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    await ref
+        .read(wordAudioReleaseJobProvider.notifier)
+        .run(
+          plan: plan,
+          config: WordAudioReleaseTtsConfig(
+            apiKey: _ttsApiKeyController.text.trim(),
+            baseUrl: _ttsBaseUrlController.text.trim(),
+            model: _ttsModelController.text.trim(),
+            voice: _ttsVoiceController.text.trim(),
+            resourceId: _ttsAppIdController.text.trim(),
+          ),
+          publish: publish,
+        );
+    await _refreshWordAudioReleaseViews(lang);
+  }
+
+  Future<void> _refreshWordAudioReleaseViews(String lang) async {
+    ref.invalidate(_ttsUsageSummaryProvider);
+    ref.invalidate(_ttsRecentUsageRecordsProvider);
+    await ref.read(_ttsPreCacheJobProvider.notifier).refreshCacheStatus(lang);
+    await ref.read(_ttsCacheMaintenanceProvider.notifier).refreshCacheHealth();
+  }
+
+  Future<void> _verifyWordAudioRelease() async {
+    await ref.read(wordAudioReleaseJobProvider.notifier).verifyLatestPackage();
+  }
+
+  Future<void> _republishWordAudioRelease() async {
+    await ref
+        .read(wordAudioReleaseJobProvider.notifier)
+        .republishLatestPackage();
+  }
+
+  Future<void> _openInteractiveWordAudioPublisher() async {
+    await ref
+        .read(wordAudioReleaseJobProvider.notifier)
+        .openInteractivePublisher();
+  }
+
+  List<WordAudioReleaseListOption> _selectedQwen3ExampleReleaseLists(
+    WordAudioReleaseJobState job,
+  ) {
+    final selectedIds = _qwen3ExampleAudioReleaseListIds;
+    if (selectedIds == null) {
+      return job.lists.isEmpty ? const [] : [job.lists.first];
+    }
+    return job.lists
+        .where((item) => selectedIds.contains(item.id))
+        .toList(growable: false);
+  }
+
+  String _qwen3ExampleReleaseSelectedListsText(
+    String lang,
+    Iterable<int> listNumbers,
+  ) {
+    final numbers = listNumbers.toList(growable: false);
+    return AppStrings.get(
+      'qwen3_example_audio_release_selected_lists',
+      lang,
+      params: {'count': numbers.length.toString(), 'lists': numbers.join(', ')},
+    );
+  }
+
+  String _qwen3ExampleReleaseSelectionLabel(
+    String lang,
+    List<WordAudioReleaseListOption> selected,
+  ) {
+    if (selected.isEmpty) {
+      return AppStrings.get('qwen3_example_audio_release_no_selection', lang);
+    }
+    if (selected.length == 1) {
+      final item = selected.single;
+      return AppStrings.get(
+        'qwen3_example_audio_release_list_option',
+        lang,
+        params: {
+          'index': item.listNumber.toString(),
+          'name': item.name,
+          'count': item.wordCount.toString(),
+        },
+      );
+    }
+    return _qwen3ExampleReleaseSelectedListsText(
+      lang,
+      selected.map((item) => item.listNumber),
+    );
+  }
+
+  Future<void> _chooseQwen3ExampleReleaseLists(
+    String lang,
+    List<WordAudioReleaseListOption> options,
+    Map<int, WordAudioReleaseListCacheStatus> cacheStatuses,
+    Map<int, WordAudioServerListStatus> serverListStatuses,
+  ) async {
+    if (options.isEmpty) return;
+    final initialIds = _qwen3ExampleAudioReleaseListIds == null
+        ? {options.first.id}
+        : {..._qwen3ExampleAudioReleaseListIds!};
+    final selected = await showDialog<Set<int>>(
+      context: context,
+      builder: (dialogContext) {
+        final draftIds = Set<int>.from(initialIds);
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text(
+              AppStrings.get('qwen3_example_audio_release_select_lists', lang),
+            ),
+            content: SizedBox(
+              width: 420,
+              height: 360,
+              child: ListView(
+                children: [
+                  for (final item in options)
+                    CheckboxListTile(
+                      value: draftIds.contains(item.id),
+                      onChanged: (checked) => setDialogState(() {
+                        if (checked ?? false) {
+                          draftIds.add(item.id);
+                        } else {
+                          draftIds.remove(item.id);
+                        }
+                      }),
+                      title: Text(
+                        AppStrings.get(
+                          'qwen3_example_audio_release_list_option',
+                          lang,
+                          params: {
+                            'index': item.listNumber.toString(),
+                            'name': item.name,
+                            'count': item.wordCount.toString(),
+                          },
+                        ),
+                      ),
+                      subtitle: Text(
+                        _qwen3ExampleReleaseListStatusText(
+                          lang,
+                          cacheStatuses[item.id],
+                          serverStatus: serverListStatuses[item.id],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => setDialogState(() {
+                  draftIds
+                    ..clear()
+                    ..addAll(options.map((item) => item.id));
+                }),
+                child: Text(AppStrings.get('select_all', lang)),
+              ),
+              TextButton(
+                onPressed: () => setDialogState(draftIds.clear),
+                child: Text(AppStrings.get('deselect_all', lang)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(AppStrings.get('cancel', lang)),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(Set<int>.from(draftIds)),
+                child: Text(AppStrings.get('done', lang)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _qwen3ExampleAudioReleaseListIds = selected);
+  }
+
+  Future<void> _confirmQwen3ExampleRelease(
+    String lang, {
+    required bool publish,
+  }) async {
+    final job = ref.read(qwen3ExampleAudioReleaseJobProvider);
+    final selected = _selectedQwen3ExampleReleaseLists(job);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.get('qwen3_example_audio_release_no_selection', lang),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final plan = await ref
+        .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+        .preparePlan(selected.map((item) => item.id).toList());
+    if (!mounted || plan == null) return;
+    if (plan.normalCalls > 0 && _ttsApiKeyController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.get('tts_precache_need_api_key', lang)),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          AppStrings.get('qwen3_example_audio_release_confirm_title', lang),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AppStrings.get(
+                publish
+                    ? 'qwen3_example_audio_release_confirm_publish_desc'
+                    : 'qwen3_example_audio_release_confirm_generate_desc',
+                lang,
+                params: {
+                  'lists': _qwen3ExampleReleaseSelectedListsText(
+                    lang,
+                    plan.listNumbers,
+                  ),
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get(
+                'qwen3_example_audio_release_confirm_calls',
+                lang,
+                params: {
+                  'calls': plan.normalCalls.toString(),
+                  'attempts': plan.maxAttempts.toString(),
+                },
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              AppStrings.get(
+                'qwen3_example_audio_release_confirm_cache',
+                lang,
+                params: {
+                  'reusable': plan.reusableWords.toString(),
+                  'total': plan.totalWords.toString(),
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(AppStrings.get('cancel', lang)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              AppStrings.get(
+                publish
+                    ? 'word_audio_release_confirm_publish'
+                    : 'word_audio_release_confirm_generate',
+                lang,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    await ref
+        .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+        .run(
+          plan: plan,
+          config: WordAudioReleaseTtsConfig(
+            apiKey: _ttsApiKeyController.text.trim(),
+            baseUrl: _ttsBaseUrlController.text.trim(),
+            model: Qwen3TtsAdapter.flashModel,
+            voice: Qwen3TtsAdapter.flashVoice,
+            resourceId: _ttsAppIdController.text.trim(),
+          ),
+          publish: publish,
+        );
+  }
+
+  Future<void> _verifyQwen3ExampleRelease() async {
+    await ref
+        .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+        .verifyLatestPackage();
+  }
+
+  Future<void> _republishQwen3ExampleRelease() async {
+    await ref
+        .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+        .republishLatestPackage();
+  }
+
+  Future<void> _openInteractiveQwen3ExamplePublisher() async {
+    await ref
+        .read(qwen3ExampleAudioReleaseJobProvider.notifier)
+        .openInteractivePublisher();
+  }
+
+  List<WordAudioReleaseListOption> _selectedTencentWeWinnyExampleReleaseLists(
+    WordAudioReleaseJobState job,
+  ) {
+    final selectedIds = _tencentWeWinnyExampleAudioReleaseListIds;
+    if (selectedIds == null) {
+      return job.lists.isEmpty ? const [] : [job.lists.first];
+    }
+    return job.lists
+        .where((item) => selectedIds.contains(item.id))
+        .toList(growable: false);
+  }
+
+  String _tencentWeWinnyExampleReleaseSelectedListsText(
+    String lang,
+    Iterable<int> listNumbers,
+  ) {
+    final numbers = listNumbers.toList(growable: false);
+    return AppStrings.get(
+      'tencent_wewinny_example_audio_release_selected_lists',
+      lang,
+      params: {'count': numbers.length.toString(), 'lists': numbers.join(', ')},
+    );
+  }
+
+  String _tencentWeWinnyExampleReleaseSelectionLabel(
+    String lang,
+    List<WordAudioReleaseListOption> selected,
+  ) {
+    if (selected.isEmpty) {
+      return AppStrings.get(
+        'tencent_wewinny_example_audio_release_no_selection',
+        lang,
+      );
+    }
+    if (selected.length == 1) {
+      final item = selected.single;
+      return AppStrings.get(
+        'tencent_wewinny_example_audio_release_list_option',
+        lang,
+        params: {
+          'index': item.listNumber.toString(),
+          'name': item.name,
+          'count': item.wordCount.toString(),
+        },
+      );
+    }
+    return _tencentWeWinnyExampleReleaseSelectedListsText(
+      lang,
+      selected.map((item) => item.listNumber),
+    );
+  }
+
+  String _tencentWeWinnyExampleReleaseListStatusText(
+    String lang,
+    WordAudioReleaseListCacheStatus? cacheStatus, {
+    required WordAudioServerListStatus? serverStatus,
+  }) {
+    final localStatus = cacheStatus == null
+        ? AppStrings.get(
+            'tencent_wewinny_example_audio_release_list_cache_unknown',
+            lang,
+          )
+        : cacheStatus.isComplete
+        ? AppStrings.get(
+            'tencent_wewinny_example_audio_release_list_cached',
+            lang,
+          )
+        : AppStrings.get(
+            'tencent_wewinny_example_audio_release_list_cache_progress',
+            lang,
+            params: {
+              'cached': cacheStatus.cachedItems.toString(),
+              'total': cacheStatus.totalItems.toString(),
+            },
+          );
+    final remoteStatus = switch (serverStatus?.uploadState) {
+      WordAudioServerListUploadState.checking => AppStrings.get(
+        'word_audio_release_list_server_checking',
+        lang,
+        params: {
+          'checked': serverStatus!.checkedItems.toString(),
+          'total': serverStatus.totalItems.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.uploaded => AppStrings.get(
+        'word_audio_release_list_server_uploaded',
+        lang,
+        params: {
+          'uploaded': serverStatus!.uploadedItems.toString(),
+          'total': serverStatus.totalItems.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.notUploaded => AppStrings.get(
+        'word_audio_release_list_server_not_uploaded',
+        lang,
+        params: {'total': serverStatus!.totalItems.toString()},
+      ),
+      WordAudioServerListUploadState.partiallyUploaded => AppStrings.get(
+        'word_audio_release_list_server_partial',
+        lang,
+        params: {
+          'uploaded': serverStatus!.uploadedItems.toString(),
+          'total': serverStatus.totalItems.toString(),
+        },
+      ),
+      WordAudioServerListUploadState.unavailable => AppStrings.get(
+        'word_audio_release_list_server_unavailable',
+        lang,
+      ),
+      null => AppStrings.get(
+        'word_audio_release_list_server_not_checked',
+        lang,
+      ),
+    };
+    return '$localStatus · $remoteStatus';
+  }
+
+  String _tencentWeWinnyExampleReleaseServerFailureText(
+    String lang,
+    RemoteExampleAudioFailure failure,
+  ) {
+    return AppStrings.get(switch (failure) {
+      RemoteExampleAudioFailure.notConfigured =>
+        'tencent_wewinny_example_audio_release_server_status_not_configured',
+      RemoteExampleAudioFailure.invalidUrl =>
+        'tencent_wewinny_example_audio_release_server_status_invalid_url',
+      _ => 'tencent_wewinny_example_audio_release_server_status_failed',
+    }, lang);
+  }
+
+  Future<void> _chooseTencentWeWinnyExampleReleaseLists(
+    String lang,
+    List<WordAudioReleaseListOption> options,
+    Map<int, WordAudioReleaseListCacheStatus> cacheStatuses,
+    Map<int, WordAudioServerListStatus> serverListStatuses,
+  ) async {
+    if (options.isEmpty) return;
+    final initialIds = _tencentWeWinnyExampleAudioReleaseListIds == null
+        ? {options.first.id}
+        : {..._tencentWeWinnyExampleAudioReleaseListIds!};
+    final selected = await showDialog<Set<int>>(
+      context: context,
+      builder: (dialogContext) {
+        final draftIds = Set<int>.from(initialIds);
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text(
+              AppStrings.get(
+                'tencent_wewinny_example_audio_release_select_lists',
+                lang,
+              ),
+            ),
+            content: SizedBox(
+              width: 420,
+              height: 360,
+              child: ListView(
+                children: [
+                  for (final item in options)
+                    CheckboxListTile(
+                      value: draftIds.contains(item.id),
+                      onChanged: (checked) => setDialogState(() {
+                        if (checked ?? false) {
+                          draftIds.add(item.id);
+                        } else {
+                          draftIds.remove(item.id);
+                        }
+                      }),
+                      title: Text(
+                        AppStrings.get(
+                          'tencent_wewinny_example_audio_release_list_option',
+                          lang,
+                          params: {
+                            'index': item.listNumber.toString(),
+                            'name': item.name,
+                            'count': item.wordCount.toString(),
+                          },
+                        ),
+                      ),
+                      subtitle: Text(
+                        _tencentWeWinnyExampleReleaseListStatusText(
+                          lang,
+                          cacheStatuses[item.id],
+                          serverStatus: serverListStatuses[item.id],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => setDialogState(() {
+                  draftIds
+                    ..clear()
+                    ..addAll(options.map((item) => item.id));
+                }),
+                child: Text(AppStrings.get('select_all', lang)),
+              ),
+              TextButton(
+                onPressed: () => setDialogState(draftIds.clear),
+                child: Text(AppStrings.get('deselect_all', lang)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(AppStrings.get('cancel', lang)),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(Set<int>.from(draftIds)),
+                child: Text(AppStrings.get('done', lang)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _tencentWeWinnyExampleAudioReleaseListIds = selected);
+  }
+
+  Future<void> _confirmTencentWeWinnyExampleRelease(
+    String lang, {
+    required bool publish,
+  }) async {
+    final job = ref.read(tencentWeWinnyExampleAudioReleaseJobProvider);
+    final selected = _selectedTencentWeWinnyExampleReleaseLists(job);
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.get(
+              'tencent_wewinny_example_audio_release_no_selection',
+              lang,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final plan = await ref
+        .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+        .preparePlan(selected.map((item) => item.id).toList());
+    if (!mounted || plan == null) return;
+    if (plan.normalCalls > 0 &&
+        !TencentTtsAdapter.hasEnvironmentCredentials()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.get(
+              'tencent_wewinny_example_audio_release_credentials_required',
+              lang,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          AppStrings.get(
+            'tencent_wewinny_example_audio_release_confirm_title',
+            lang,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AppStrings.get(
+                publish
+                    ? 'tencent_wewinny_example_audio_release_confirm_publish_desc'
+                    : 'tencent_wewinny_example_audio_release_confirm_generate_desc',
+                lang,
+                params: {
+                  'lists': _tencentWeWinnyExampleReleaseSelectedListsText(
+                    lang,
+                    plan.listNumbers,
+                  ),
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get(
+                'tencent_wewinny_example_audio_release_confirm_calls',
+                lang,
+                params: {
+                  'calls': plan.normalCalls.toString(),
+                  'attempts': plan.maxAttempts.toString(),
+                },
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              AppStrings.get(
+                'tencent_wewinny_example_audio_release_confirm_cache',
+                lang,
+                params: {
+                  'reusable': plan.reusableWords.toString(),
+                  'total': plan.totalWords.toString(),
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(AppStrings.get('cancel', lang)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(
+              AppStrings.get(
+                publish
+                    ? 'word_audio_release_confirm_publish'
+                    : 'word_audio_release_confirm_generate',
+                lang,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    await ref
+        .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+        .run(
+          plan: plan,
+          config: const WordAudioReleaseTtsConfig.tencentWeJack(),
+          publish: publish,
+        );
+  }
+
+  Future<void> _verifyTencentWeWinnyExampleRelease() async {
+    await ref
+        .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+        .verifyLatestPackage();
+  }
+
+  Future<void> _republishTencentWeWinnyExampleRelease() async {
+    await ref
+        .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+        .republishLatestPackage();
+  }
+
+  Future<void> _openInteractiveTencentWeWinnyExamplePublisher() async {
+    await ref
+        .read(tencentWeWinnyExampleAudioReleaseJobProvider.notifier)
+        .openInteractivePublisher();
+  }
+
   Future<void> _saveTtsCloudConfig(BuildContext context, String lang) async {
     final repo = ref.read(settingsRepositoryProvider);
-    final ns = _ttsProvider;
+    final ns = _ttsSettingsNamespace(_ttsProvider);
     await repo.setString('tts_${ns}_api_key', _ttsApiKeyController.text.trim());
     await repo.setString(
       'tts_${ns}_base_url',
       _ttsBaseUrlController.text.trim(),
     );
-    await repo.setString('tts_${ns}_model', _ttsModelController.text.trim());
-    await repo.setString('tts_${ns}_voice', _ttsVoiceController.text.trim());
+    if (!_isQwenTtsProfile(_ttsProvider)) {
+      await repo.setString('tts_${ns}_model', _ttsModelController.text.trim());
+      await repo.setString('tts_${ns}_voice', _ttsVoiceController.text.trim());
+    }
     await repo.setString('tts_${ns}_app_id', _ttsAppIdController.text.trim());
     await ref.read(ttsServiceProvider).reloadSettings();
     if (context.mounted) {
@@ -969,6 +2406,176 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _isLanguageToolTesting = false);
     }
+  }
+
+  Widget _wordAudioPlaybackCard(ThemeData theme, String lang) {
+    final usesRemoteServer =
+        _wordAudioPlaybackSource == TtsService.remoteWordPlaybackSource;
+    final usesRemoteQwen3ExampleServer =
+        _exampleAudioPlaybackSource == TtsService.remoteExamplePlaybackSource;
+    final usesRemoteTencentExampleServer =
+        _exampleAudioPlaybackSource ==
+        TtsService.remoteTencentWeWinnyExamplePlaybackSource;
+    final usesRemoteExampleServer =
+        usesRemoteQwen3ExampleServer || usesRemoteTencentExampleServer;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.volume_up_outlined, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  AppStrings.get('word_audio_playback_title', lang),
+                  style: theme.textTheme.titleSmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              AppStrings.get('word_audio_playback_source_label', lang),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: Text(
+                    AppStrings.get('word_audio_playback_remote', lang),
+                  ),
+                  selected: usesRemoteServer,
+                  onSelected: (_) => _saveWordAudioPlaybackSource(
+                    TtsService.remoteWordPlaybackSource,
+                  ),
+                ),
+                ChoiceChip(
+                  label: Text(
+                    AppStrings.get('word_audio_playback_current_tts', lang),
+                  ),
+                  selected: !usesRemoteServer,
+                  onSelected: (_) => _saveWordAudioPlaybackSource(
+                    TtsService.configuredTtsWordPlaybackSource,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get(
+                usesRemoteServer
+                    ? 'word_audio_playback_remote_desc'
+                    : 'word_audio_playback_current_tts_desc',
+                lang,
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 4),
+            Text(
+              AppStrings.get('example_audio_playback_title', lang),
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              AppStrings.get('example_audio_playback_source_label', lang),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: Text(
+                    AppStrings.get('example_audio_playback_remote', lang),
+                  ),
+                  selected: usesRemoteQwen3ExampleServer,
+                  onSelected: (_) => _saveExampleAudioPlaybackSource(
+                    TtsService.remoteExamplePlaybackSource,
+                  ),
+                ),
+                ChoiceChip(
+                  label: Text(
+                    AppStrings.get(
+                      'example_audio_playback_remote_tencent_wewinny',
+                      lang,
+                    ),
+                  ),
+                  selected: usesRemoteTencentExampleServer,
+                  onSelected: (_) => _saveExampleAudioPlaybackSource(
+                    TtsService.remoteTencentWeWinnyExamplePlaybackSource,
+                  ),
+                ),
+                ChoiceChip(
+                  label: Text(
+                    AppStrings.get('example_audio_playback_current_tts', lang),
+                  ),
+                  selected: !usesRemoteExampleServer,
+                  onSelected: (_) => _saveExampleAudioPlaybackSource(
+                    TtsService.configuredTtsExamplePlaybackSource,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get(
+                usesRemoteQwen3ExampleServer
+                    ? 'example_audio_playback_remote_desc'
+                    : usesRemoteTencentExampleServer
+                    ? 'example_audio_playback_remote_tencent_wewinny_desc'
+                    : 'example_audio_playback_current_tts_desc',
+                lang,
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            if (usesRemoteServer || usesRemoteExampleServer) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _wordAudioServerBaseUrlController,
+                keyboardType: TextInputType.url,
+                textCapitalization: TextCapitalization.none,
+                autocorrect: false,
+                enableSuggestions: false,
+                onSubmitted: (_) => _saveWordAudioServerBaseUrl(context, lang),
+                decoration: InputDecoration(
+                  labelText: AppStrings.get('word_audio_server_address', lang),
+                  hintText: AppStrings.get(
+                    'word_audio_server_address_hint',
+                    lang,
+                  ),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _saveWordAudioServerBaseUrl(context, lang),
+                  icon: const Icon(Icons.save, size: 18),
+                  label: Text(AppStrings.get('word_audio_server_save', lang)),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _ttsPreCacheStatusCard(
@@ -1088,7 +2695,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               AppStrings.get(
                 'tts_precache_first_failure',
                 lang,
-                params: {'error': result.failedItems.first},
+                params: {
+                  'error': _formatPreCacheFailure(
+                    result.failedItems.first,
+                    lang,
+                  ),
+                },
               ),
               style: theme.textTheme.bodySmall,
             ),
@@ -1195,11 +2807,1865 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _wordAudioRepairCard(
+    ThemeData theme,
+    String lang, {
+    required bool enabled,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.build_circle_outlined, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppStrings.get('word_audio_repair_settings_title', lang),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              AppStrings.get('word_audio_repair_settings_desc', lang),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: !enabled
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WordAudioRepairScreen(),
+                        ),
+                      ),
+                icon: const Icon(Icons.tune_outlined, size: 18),
+                label: Text(AppStrings.get('word_audio_repair_open', lang)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _wordAudioReleaseCard(
+    ThemeData theme,
+    String lang,
+    WordAudioReleaseJobState job, {
+    required bool ttsPreCacheRunning,
+    required _TtsPreCacheJobState cacheJob,
+  }) {
+    final fullyCachedListIds = _fullyCachedListIds(cacheJob);
+    final cacheStatusesByListId = {
+      for (final status in cacheJob.cacheStatuses) status.listId: status,
+    };
+    final selected = _selectedWordAudioReleaseLists(job);
+    final allListsCached =
+        job.lists.isNotEmpty &&
+        job.lists.every((item) => fullyCachedListIds.contains(item.id));
+    final plan = _wordAudioReleasePlanMatchesSelection(job.plan, selected)
+        ? job.plan
+        : null;
+    final successStages = {
+      WordAudioReleaseJobStage.generated,
+      WordAudioReleaseJobStage.published,
+      WordAudioReleaseJobStage.verified,
+    };
+    final warningStages = {
+      WordAudioReleaseJobStage.interactiveSudoRequired,
+      WordAudioReleaseJobStage.cancelled,
+      WordAudioReleaseJobStage.synthesisFailed,
+      WordAudioReleaseJobStage.validationFailed,
+    };
+    final errorStages = {
+      WordAudioReleaseJobStage.failed,
+      WordAudioReleaseJobStage.unsupported,
+    };
+    final color = successStages.contains(job.stage)
+        ? Colors.green
+        : errorStages.contains(job.stage)
+        ? Colors.red
+        : warningStages.contains(job.stage)
+        ? Colors.orange
+        : theme.colorScheme.primary;
+    final busy =
+        job.isRunning || ttsPreCacheRunning || job.isCheckingServerStatus;
+    final selectionLoading = job.isLoadingLists || cacheJob.isLoadingStatus;
+    final serverStatusRows = [
+      (
+        state: WordAudioServerListUploadState.uploaded,
+        key: 'word_audio_release_server_status_uploaded',
+      ),
+      (
+        state: WordAudioServerListUploadState.notUploaded,
+        key: 'word_audio_release_server_status_not_uploaded',
+      ),
+      (
+        state: WordAudioServerListUploadState.partiallyUploaded,
+        key: 'word_audio_release_server_status_partial',
+      ),
+      (
+        state: WordAudioServerListUploadState.unavailable,
+        key: 'word_audio_release_server_status_unavailable',
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.rocket_launch_outlined, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppStrings.get('word_audio_release_title', lang),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: selectionLoading || busy
+                      ? null
+                      : () async {
+                          ref
+                              .read(wordAudioReleaseJobProvider.notifier)
+                              .clearServerStatuses();
+                          await Future.wait([
+                            ref
+                                .read(wordAudioReleaseJobProvider.notifier)
+                                .refreshLists(),
+                            ref
+                                .read(_ttsPreCacheJobProvider.notifier)
+                                .refreshCacheStatus(lang),
+                          ]);
+                        },
+                  icon: selectionLoading
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 16),
+                  label: Text(AppStrings.get('refresh', lang)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AppStrings.get('word_audio_release_desc', lang),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get('word_audio_release_list_label', lang),
+              style: theme.textTheme.labelLarge,
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: busy || selectionLoading || job.lists.isEmpty
+                    ? null
+                    : () => _chooseWordAudioReleaseLists(
+                        lang,
+                        job.lists,
+                        cacheStatusesByListId,
+                        job.serverListStatuses,
+                      ),
+                icon: const Icon(Icons.playlist_add_check, size: 18),
+                label: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _wordAudioReleaseSelectionLabel(lang, selected),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+            if (job.lists.isEmpty && !job.isLoadingLists) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_no_lists', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+            if (allListsCached && !selectionLoading) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_all_lists_cached', lang),
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AppStrings.get(
+                            'word_audio_release_server_status_title',
+                            lang,
+                          ),
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: busy || selectionLoading
+                            ? null
+                            : () => ref
+                                  .read(wordAudioReleaseJobProvider.notifier)
+                                  .refreshServerStatuses(
+                                    fullyCachedListIds: fullyCachedListIds,
+                                  ),
+                        icon: job.isCheckingServerStatus
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh, size: 16),
+                        label: Text(
+                          AppStrings.get(
+                            job.serverListStatuses.isEmpty
+                                ? 'word_audio_release_check_server_status'
+                                : 'word_audio_release_refresh_server_status',
+                            lang,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (job.isCheckingServerStatus) ...[
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: job.serverStatusTotalWords == 0
+                          ? null
+                          : job.serverStatusCheckedWords /
+                                job.serverStatusTotalWords,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_server_status_progress',
+                        lang,
+                        params: {
+                          'done': job.serverStatusCheckedWords.toString(),
+                          'total': job.serverStatusTotalWords.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else if (job.serverStatusFailure != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _wordAudioReleaseServerFailureText(
+                        lang,
+                        job.serverStatusFailure!,
+                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ] else if (fullyCachedListIds.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_server_status_no_cached',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else if (job.serverListStatuses.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_server_status_not_checked',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    for (final row in serverStatusRows)
+                      if (_serverStatusListNumbers(job, row.state).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            AppStrings.get(
+                              row.key,
+                              lang,
+                              params: {
+                                'lists': _compactWordAudioReleaseListNumbers(
+                                  _serverStatusListNumbers(job, row.state),
+                                ),
+                              },
+                            ),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                  ],
+                ],
+              ),
+            ),
+            if (plan != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_plan_summary',
+                        lang,
+                        params: {
+                          'lists': _wordAudioReleaseSelectedListsText(
+                            lang,
+                            plan.listNumbers,
+                          ),
+                          'total': plan.totalWords.toString(),
+                          'reusable': plan.reusableWords.toString(),
+                          'pending': plan.normalCalls.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_call_summary',
+                        lang,
+                        params: {
+                          'calls': plan.normalCalls.toString(),
+                          'attempts': plan.maxAttempts.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy || selectionLoading || selected.isEmpty
+                      ? null
+                      : () => _confirmWordAudioRelease(lang, publish: true),
+                  icon: const Icon(Icons.rocket_launch, size: 18),
+                  label: Text(
+                    AppStrings.get('word_audio_release_generate_publish', lang),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy || selectionLoading || selected.isEmpty
+                      ? null
+                      : () => _confirmWordAudioRelease(lang, publish: false),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  label: Text(
+                    AppStrings.get('word_audio_release_generate_only', lang),
+                  ),
+                ),
+                if (job.canCancel)
+                  OutlinedButton.icon(
+                    onPressed: job.cancelRequested
+                        ? null
+                        : () => ref
+                              .read(wordAudioReleaseJobProvider.notifier)
+                              .cancel(),
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                    label: Text(AppStrings.get('cancel', lang)),
+                  ),
+              ],
+            ),
+            if (job.package != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.get(
+                  'word_audio_release_package_ready',
+                  lang,
+                  params: {'count': job.package!.expectedCount.toString()},
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : _verifyWordAudioRelease,
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    label: Text(
+                      AppStrings.get('word_audio_release_verify_server', lang),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : _republishWordAudioRelease,
+                    icon: const Icon(Icons.publish_outlined, size: 18),
+                    label: Text(
+                      AppStrings.get('word_audio_release_republish', lang),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (job.stage ==
+                WordAudioReleaseJobStage.interactiveSudoRequired) ...[
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.get('word_audio_release_sudo_required', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: busy ? null : _openInteractiveWordAudioPublisher,
+                icon: const Icon(Icons.terminal_outlined, size: 18),
+                label: Text(
+                  AppStrings.get('word_audio_release_open_interactive', lang),
+                ),
+              ),
+            ],
+            if (job.stage ==
+                WordAudioReleaseJobStage.interactivePublisherOpened) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_interactive_opened', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+            if (job.stage != WordAudioReleaseJobStage.idle) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          busy
+                              ? Icons.hourglass_top_outlined
+                              : Icons.info_outline,
+                          color: color,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _wordAudioReleaseStatusText(job, lang),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (job.progress != null && busy) ...[
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: job.progress!.total == 0
+                            ? null
+                            : job.progress!.done / job.progress!.total,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_current',
+                          lang,
+                          params: {
+                            'list': job.progress!.currentListName,
+                            'word': job.progress!.currentText,
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                    if (job.synthesis != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_counts',
+                          lang,
+                          params: {
+                            'success': job.synthesis!.success.toString(),
+                            'skipped': job.synthesis!.skipped.toString(),
+                            'failed': job.synthesis!.failed.toString(),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_usage',
+                          lang,
+                          params: {
+                            'calls': job.synthesis!.apiCalls.toString(),
+                            'chars': job.synthesis!.chargedCharacters
+                                .toString(),
+                            'bytes': _formatBytes(job.synthesis!.audioBytes),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (job.logs.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_log_title', lang),
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              ...job.logs.reversed
+                  .take(4)
+                  .map(
+                    (line) => Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(line, style: theme.textTheme.bodySmall),
+                    ),
+                  ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _qwen3ExampleAudioReleaseCard(
+    ThemeData theme,
+    String lang,
+    WordAudioReleaseJobState job,
+  ) {
+    final cacheStatuses = job.localListStatuses;
+    final fullyCachedListIds = {
+      for (final status in cacheStatuses.values)
+        if (status.isComplete) status.listId,
+    };
+    final selected = _selectedQwen3ExampleReleaseLists(job);
+    final plan = _wordAudioReleasePlanMatchesSelection(job.plan, selected)
+        ? job.plan
+        : null;
+    final successStages = {
+      WordAudioReleaseJobStage.generated,
+      WordAudioReleaseJobStage.published,
+      WordAudioReleaseJobStage.verified,
+    };
+    final warningStages = {
+      WordAudioReleaseJobStage.interactiveSudoRequired,
+      WordAudioReleaseJobStage.cancelled,
+      WordAudioReleaseJobStage.synthesisFailed,
+      WordAudioReleaseJobStage.validationFailed,
+    };
+    final errorStages = {
+      WordAudioReleaseJobStage.failed,
+      WordAudioReleaseJobStage.unsupported,
+    };
+    final color = successStages.contains(job.stage)
+        ? Colors.green
+        : errorStages.contains(job.stage)
+        ? Colors.red
+        : warningStages.contains(job.stage)
+        ? Colors.orange
+        : theme.colorScheme.primary;
+    final busy =
+        job.isRunning || job.isLoadingCacheStatus || job.isCheckingServerStatus;
+    final serverStatusRows = [
+      (
+        state: WordAudioServerListUploadState.uploaded,
+        key: 'qwen3_example_audio_release_server_status_uploaded',
+      ),
+      (
+        state: WordAudioServerListUploadState.notUploaded,
+        key: 'qwen3_example_audio_release_server_status_not_uploaded',
+      ),
+      (
+        state: WordAudioServerListUploadState.partiallyUploaded,
+        key: 'qwen3_example_audio_release_server_status_partial',
+      ),
+      (
+        state: WordAudioServerListUploadState.unavailable,
+        key: 'qwen3_example_audio_release_server_status_unavailable',
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome_outlined, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppStrings.get('qwen3_example_audio_release_title', lang),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: busy || job.isLoadingLists
+                      ? null
+                      : () async {
+                          final controller = ref.read(
+                            qwen3ExampleAudioReleaseJobProvider.notifier,
+                          );
+                          await controller.refreshLists();
+                          await controller.refreshCacheStatuses();
+                          await controller.loadLatestPackage();
+                        },
+                  icon: job.isLoadingLists || job.isLoadingCacheStatus
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 16),
+                  label: Text(AppStrings.get('refresh', lang)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AppStrings.get('qwen3_example_audio_release_desc', lang),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get('qwen3_example_audio_release_list_label', lang),
+              style: theme.textTheme.labelLarge,
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: busy || job.isLoadingLists || job.lists.isEmpty
+                    ? null
+                    : () => _chooseQwen3ExampleReleaseLists(
+                        lang,
+                        job.lists,
+                        cacheStatuses,
+                        job.serverListStatuses,
+                      ),
+                icon: const Icon(Icons.playlist_add_check, size: 18),
+                label: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _qwen3ExampleReleaseSelectionLabel(lang, selected),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+            if (job.lists.isEmpty && !job.isLoadingLists) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('qwen3_example_audio_release_no_lists', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+            if (job.cacheStatusError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get(
+                  'qwen3_example_audio_release_cache_status_failed',
+                  lang,
+                  params: {'msg': job.cacheStatusError!},
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ] else if (cacheStatuses.isNotEmpty &&
+                fullyCachedListIds.length == job.lists.length &&
+                !job.isLoadingCacheStatus) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get(
+                  'qwen3_example_audio_release_all_lists_cached',
+                  lang,
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AppStrings.get(
+                            'qwen3_example_audio_release_server_status_title',
+                            lang,
+                          ),
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: busy || job.isLoadingLists
+                            ? null
+                            : () => ref
+                                  .read(
+                                    qwen3ExampleAudioReleaseJobProvider
+                                        .notifier,
+                                  )
+                                  .refreshServerStatuses(
+                                    fullyCachedListIds: fullyCachedListIds,
+                                  ),
+                        icon: job.isCheckingServerStatus
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh, size: 16),
+                        label: Text(
+                          AppStrings.get(
+                            job.serverListStatuses.isEmpty
+                                ? 'qwen3_example_audio_release_check_server_status'
+                                : 'qwen3_example_audio_release_refresh_server_status',
+                            lang,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (job.isCheckingServerStatus) ...[
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: job.serverStatusTotalWords == 0
+                          ? null
+                          : job.serverStatusCheckedWords /
+                                job.serverStatusTotalWords,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'qwen3_example_audio_release_server_status_progress',
+                        lang,
+                        params: {
+                          'done': job.serverStatusCheckedWords.toString(),
+                          'total': job.serverStatusTotalWords.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else if (job.exampleServerStatusFailure != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _qwen3ExampleReleaseServerFailureText(
+                        lang,
+                        job.exampleServerStatusFailure!,
+                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ] else if (fullyCachedListIds.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'qwen3_example_audio_release_server_status_no_cached',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else if (job.serverListStatuses.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'qwen3_example_audio_release_server_status_not_checked',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    for (final row in serverStatusRows)
+                      if (_serverStatusListNumbers(job, row.state).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            AppStrings.get(
+                              row.key,
+                              lang,
+                              params: {
+                                'lists': _compactWordAudioReleaseListNumbers(
+                                  _serverStatusListNumbers(job, row.state),
+                                ),
+                              },
+                            ),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                  ],
+                ],
+              ),
+            ),
+            if (plan != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.get(
+                        'qwen3_example_audio_release_plan_summary',
+                        lang,
+                        params: {
+                          'lists': _qwen3ExampleReleaseSelectedListsText(
+                            lang,
+                            plan.listNumbers,
+                          ),
+                          'total': plan.totalWords.toString(),
+                          'reusable': plan.reusableWords.toString(),
+                          'pending': plan.normalCalls.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_call_summary',
+                        lang,
+                        params: {
+                          'calls': plan.normalCalls.toString(),
+                          'attempts': plan.maxAttempts.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy || job.isLoadingLists || selected.isEmpty
+                      ? null
+                      : () => _confirmQwen3ExampleRelease(lang, publish: true),
+                  icon: const Icon(Icons.rocket_launch, size: 18),
+                  label: Text(
+                    AppStrings.get('word_audio_release_generate_publish', lang),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy || job.isLoadingLists || selected.isEmpty
+                      ? null
+                      : () => _confirmQwen3ExampleRelease(lang, publish: false),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  label: Text(
+                    AppStrings.get('word_audio_release_generate_only', lang),
+                  ),
+                ),
+                if (job.canCancel)
+                  OutlinedButton.icon(
+                    onPressed: job.cancelRequested
+                        ? null
+                        : () => ref
+                              .read(
+                                qwen3ExampleAudioReleaseJobProvider.notifier,
+                              )
+                              .cancel(),
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                    label: Text(AppStrings.get('cancel', lang)),
+                  ),
+              ],
+            ),
+            if (job.package != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.get(
+                  'qwen3_example_audio_release_package_ready',
+                  lang,
+                  params: {'count': job.package!.expectedCount.toString()},
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : _verifyQwen3ExampleRelease,
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    label: Text(
+                      AppStrings.get('word_audio_release_verify_server', lang),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : _republishQwen3ExampleRelease,
+                    icon: const Icon(Icons.publish_outlined, size: 18),
+                    label: Text(
+                      AppStrings.get('word_audio_release_republish', lang),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (job.stage ==
+                WordAudioReleaseJobStage.interactiveSudoRequired) ...[
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.get('word_audio_release_sudo_required', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: busy ? null : _openInteractiveQwen3ExamplePublisher,
+                icon: const Icon(Icons.terminal_outlined, size: 18),
+                label: Text(
+                  AppStrings.get('word_audio_release_open_interactive', lang),
+                ),
+              ),
+            ],
+            if (job.stage ==
+                WordAudioReleaseJobStage.interactivePublisherOpened) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_interactive_opened', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+            if (job.stage != WordAudioReleaseJobStage.idle) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          busy
+                              ? Icons.hourglass_top_outlined
+                              : Icons.info_outline,
+                          color: color,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _qwen3ExampleReleaseStatusText(job, lang),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (job.progress != null && busy) ...[
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: job.progress!.total == 0
+                            ? null
+                            : job.progress!.done / job.progress!.total,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_current',
+                          lang,
+                          params: {
+                            'list': job.progress!.currentListName,
+                            'word': job.progress!.currentText,
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (job.synthesis != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_counts',
+                          lang,
+                          params: {
+                            'success': job.synthesis!.success.toString(),
+                            'skipped': job.synthesis!.skipped.toString(),
+                            'failed': job.synthesis!.failed.toString(),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_usage',
+                          lang,
+                          params: {
+                            'calls': job.synthesis!.apiCalls.toString(),
+                            'chars': job.synthesis!.chargedCharacters
+                                .toString(),
+                            'bytes': _formatBytes(job.synthesis!.audioBytes),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (job.logs.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_log_title', lang),
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              ...job.logs.reversed
+                  .take(4)
+                  .map(
+                    (line) => Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(line, style: theme.textTheme.bodySmall),
+                    ),
+                  ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tencentWeWinnyExampleAudioReleaseCard(
+    ThemeData theme,
+    String lang,
+    WordAudioReleaseJobState job,
+  ) {
+    final credentialPresence =
+        TencentTtsAdapter.environmentCredentialPresence();
+    final credentialsReady =
+        credentialPresence[TencentTtsAdapter.secretIdEnvironmentKey] == true &&
+        credentialPresence[TencentTtsAdapter.secretKeyEnvironmentKey] == true;
+    final cacheStatuses = job.localListStatuses;
+    final fullyCachedListIds = {
+      for (final status in cacheStatuses.values)
+        if (status.isComplete) status.listId,
+    };
+    final selected = _selectedTencentWeWinnyExampleReleaseLists(job);
+    final plan = _wordAudioReleasePlanMatchesSelection(job.plan, selected)
+        ? job.plan
+        : null;
+    final successStages = {
+      WordAudioReleaseJobStage.generated,
+      WordAudioReleaseJobStage.published,
+      WordAudioReleaseJobStage.verified,
+    };
+    final warningStages = {
+      WordAudioReleaseJobStage.interactiveSudoRequired,
+      WordAudioReleaseJobStage.cancelled,
+      WordAudioReleaseJobStage.synthesisFailed,
+      WordAudioReleaseJobStage.validationFailed,
+    };
+    final errorStages = {
+      WordAudioReleaseJobStage.failed,
+      WordAudioReleaseJobStage.unsupported,
+    };
+    final color = successStages.contains(job.stage)
+        ? Colors.green
+        : errorStages.contains(job.stage)
+        ? Colors.red
+        : warningStages.contains(job.stage)
+        ? Colors.orange
+        : theme.colorScheme.primary;
+    final busy =
+        job.isRunning || job.isLoadingCacheStatus || job.isCheckingServerStatus;
+    final serverStatusRows = [
+      (
+        state: WordAudioServerListUploadState.uploaded,
+        key: 'tencent_wewinny_example_audio_release_server_status_uploaded',
+      ),
+      (
+        state: WordAudioServerListUploadState.notUploaded,
+        key: 'tencent_wewinny_example_audio_release_server_status_not_uploaded',
+      ),
+      (
+        state: WordAudioServerListUploadState.partiallyUploaded,
+        key: 'tencent_wewinny_example_audio_release_server_status_partial',
+      ),
+      (
+        state: WordAudioServerListUploadState.unavailable,
+        key: 'tencent_wewinny_example_audio_release_server_status_unavailable',
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.cloud_outlined, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppStrings.get(
+                      'tencent_wewinny_example_audio_release_title',
+                      lang,
+                    ),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: busy || job.isLoadingLists
+                      ? null
+                      : () async {
+                          final controller = ref.read(
+                            tencentWeWinnyExampleAudioReleaseJobProvider
+                                .notifier,
+                          );
+                          await controller.refreshLists();
+                          await controller.refreshCacheStatuses();
+                          await controller.loadLatestPackage();
+                        },
+                  icon: job.isLoadingLists || job.isLoadingCacheStatus
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 16),
+                  label: Text(AppStrings.get('refresh', lang)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AppStrings.get(
+                'tencent_wewinny_example_audio_release_desc',
+                lang,
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (credentialsReady ? Colors.green : Colors.orange)
+                    .withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    credentialsReady
+                        ? Icons.verified_user_outlined
+                        : Icons.warning_amber_outlined,
+                    size: 18,
+                    color: credentialsReady ? Colors.green : Colors.orange,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      AppStrings.get(
+                        credentialsReady
+                            ? 'tencent_wewinny_example_audio_release_credentials_ready'
+                            : 'tencent_wewinny_example_audio_release_credentials_missing',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              AppStrings.get(
+                'tencent_wewinny_example_audio_release_list_label',
+                lang,
+              ),
+              style: theme.textTheme.labelLarge,
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: busy || job.isLoadingLists || job.lists.isEmpty
+                    ? null
+                    : () => _chooseTencentWeWinnyExampleReleaseLists(
+                        lang,
+                        job.lists,
+                        cacheStatuses,
+                        job.serverListStatuses,
+                      ),
+                icon: const Icon(Icons.playlist_add_check, size: 18),
+                label: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _tencentWeWinnyExampleReleaseSelectionLabel(lang, selected),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+            if (job.lists.isEmpty && !job.isLoadingLists) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get(
+                  'tencent_wewinny_example_audio_release_no_lists',
+                  lang,
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+            if (job.cacheStatusError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get(
+                  'tencent_wewinny_example_audio_release_cache_status_failed',
+                  lang,
+                  params: {'msg': job.cacheStatusError!},
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ] else if (cacheStatuses.isNotEmpty &&
+                fullyCachedListIds.length == job.lists.length &&
+                !job.isLoadingCacheStatus) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get(
+                  'tencent_wewinny_example_audio_release_all_lists_cached',
+                  lang,
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AppStrings.get(
+                            'tencent_wewinny_example_audio_release_server_status_title',
+                            lang,
+                          ),
+                          style: theme.textTheme.labelLarge,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: busy || job.isLoadingLists
+                            ? null
+                            : () => ref
+                                  .read(
+                                    tencentWeWinnyExampleAudioReleaseJobProvider
+                                        .notifier,
+                                  )
+                                  .refreshServerStatuses(
+                                    fullyCachedListIds: fullyCachedListIds,
+                                  ),
+                        icon: job.isCheckingServerStatus
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh, size: 16),
+                        label: Text(
+                          AppStrings.get(
+                            job.serverListStatuses.isEmpty
+                                ? 'tencent_wewinny_example_audio_release_check_server_status'
+                                : 'tencent_wewinny_example_audio_release_refresh_server_status',
+                            lang,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (job.isCheckingServerStatus) ...[
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: job.serverStatusTotalWords == 0
+                          ? null
+                          : job.serverStatusCheckedWords /
+                                job.serverStatusTotalWords,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'tencent_wewinny_example_audio_release_server_status_progress',
+                        lang,
+                        params: {
+                          'done': job.serverStatusCheckedWords.toString(),
+                          'total': job.serverStatusTotalWords.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else if (job.exampleServerStatusFailure != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _tencentWeWinnyExampleReleaseServerFailureText(
+                        lang,
+                        job.exampleServerStatusFailure!,
+                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ] else if (fullyCachedListIds.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'tencent_wewinny_example_audio_release_server_status_no_cached',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else if (job.serverListStatuses.isEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      AppStrings.get(
+                        'tencent_wewinny_example_audio_release_server_status_not_checked',
+                        lang,
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    for (final row in serverStatusRows)
+                      if (_serverStatusListNumbers(job, row.state).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            AppStrings.get(
+                              row.key,
+                              lang,
+                              params: {
+                                'lists': _compactWordAudioReleaseListNumbers(
+                                  _serverStatusListNumbers(job, row.state),
+                                ),
+                              },
+                            ),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                  ],
+                ],
+              ),
+            ),
+            if (plan != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.get(
+                        'tencent_wewinny_example_audio_release_plan_summary',
+                        lang,
+                        params: {
+                          'lists':
+                              _tencentWeWinnyExampleReleaseSelectedListsText(
+                                lang,
+                                plan.listNumbers,
+                              ),
+                          'total': plan.totalWords.toString(),
+                          'reusable': plan.reusableWords.toString(),
+                          'pending': plan.normalCalls.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppStrings.get(
+                        'word_audio_release_call_summary',
+                        lang,
+                        params: {
+                          'calls': plan.normalCalls.toString(),
+                          'attempts': plan.maxAttempts.toString(),
+                        },
+                      ),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy || job.isLoadingLists || selected.isEmpty
+                      ? null
+                      : () => _confirmTencentWeWinnyExampleRelease(
+                          lang,
+                          publish: true,
+                        ),
+                  icon: const Icon(Icons.rocket_launch, size: 18),
+                  label: Text(
+                    AppStrings.get('word_audio_release_generate_publish', lang),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy || job.isLoadingLists || selected.isEmpty
+                      ? null
+                      : () => _confirmTencentWeWinnyExampleRelease(
+                          lang,
+                          publish: false,
+                        ),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  label: Text(
+                    AppStrings.get('word_audio_release_generate_only', lang),
+                  ),
+                ),
+                if (job.canCancel)
+                  OutlinedButton.icon(
+                    onPressed: job.cancelRequested
+                        ? null
+                        : () => ref
+                              .read(
+                                tencentWeWinnyExampleAudioReleaseJobProvider
+                                    .notifier,
+                              )
+                              .cancel(),
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                    label: Text(AppStrings.get('cancel', lang)),
+                  ),
+              ],
+            ),
+            if (job.package != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.get(
+                  'tencent_wewinny_example_audio_release_package_ready',
+                  lang,
+                  params: {'count': job.package!.expectedCount.toString()},
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: busy
+                        ? null
+                        : _verifyTencentWeWinnyExampleRelease,
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    label: Text(
+                      AppStrings.get('word_audio_release_verify_server', lang),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: busy
+                        ? null
+                        : _republishTencentWeWinnyExampleRelease,
+                    icon: const Icon(Icons.publish_outlined, size: 18),
+                    label: Text(
+                      AppStrings.get('word_audio_release_republish', lang),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (job.stage ==
+                WordAudioReleaseJobStage.interactiveSudoRequired) ...[
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.get('word_audio_release_sudo_required', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: busy
+                    ? null
+                    : _openInteractiveTencentWeWinnyExamplePublisher,
+                icon: const Icon(Icons.terminal_outlined, size: 18),
+                label: Text(
+                  AppStrings.get('word_audio_release_open_interactive', lang),
+                ),
+              ),
+            ],
+            if (job.stage ==
+                WordAudioReleaseJobStage.interactivePublisherOpened) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_interactive_opened', lang),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+            if (job.stage != WordAudioReleaseJobStage.idle) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          busy
+                              ? Icons.hourglass_top_outlined
+                              : Icons.info_outline,
+                          color: color,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _tencentWeWinnyExampleReleaseStatusText(job, lang),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (job.progress != null && busy) ...[
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: job.progress!.total == 0
+                            ? null
+                            : job.progress!.done / job.progress!.total,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_current',
+                          lang,
+                          params: {
+                            'list': job.progress!.currentListName,
+                            'word': job.progress!.currentText,
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (job.synthesis != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_counts',
+                          lang,
+                          params: {
+                            'success': job.synthesis!.success.toString(),
+                            'skipped': job.synthesis!.skipped.toString(),
+                            'failed': job.synthesis!.failed.toString(),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppStrings.get(
+                          'tts_precache_usage',
+                          lang,
+                          params: {
+                            'calls': job.synthesis!.apiCalls.toString(),
+                            'chars': job.synthesis!.chargedCharacters
+                                .toString(),
+                            'bytes': _formatBytes(job.synthesis!.audioBytes),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (job.logs.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get('word_audio_release_log_title', lang),
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 4),
+              ...job.logs.reversed
+                  .take(4)
+                  .map(
+                    (line) => Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(line, style: theme.textTheme.bodySmall),
+                    ),
+                  ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _tencentWeWinnyExampleReleaseStatusText(
+    WordAudioReleaseJobState job,
+    String lang,
+  ) {
+    return switch (job.stage) {
+      WordAudioReleaseJobStage.synthesisFailed => AppStrings.get(
+        'tencent_wewinny_example_audio_release_synthesis_failed',
+        lang,
+      ),
+      WordAudioReleaseJobStage.validationFailed => AppStrings.get(
+        'tencent_wewinny_example_audio_release_validation_failed',
+        lang,
+      ),
+      _ =>
+        job.error != null
+            ? AppStrings.get(
+                'tencent_wewinny_example_audio_release_error_detail',
+                lang,
+                params: {'msg': job.error!},
+              )
+            : _wordAudioReleaseStatusText(job, lang),
+    };
+  }
+
+  String _qwen3ExampleReleaseStatusText(
+    WordAudioReleaseJobState job,
+    String lang,
+  ) {
+    return switch (job.stage) {
+      WordAudioReleaseJobStage.synthesisFailed => AppStrings.get(
+        'qwen3_example_audio_release_synthesis_failed',
+        lang,
+      ),
+      WordAudioReleaseJobStage.validationFailed => AppStrings.get(
+        'qwen3_example_audio_release_validation_failed',
+        lang,
+      ),
+      _ =>
+        job.error != null
+            ? AppStrings.get(
+                'qwen3_example_audio_release_error_detail',
+                lang,
+                params: {'msg': job.error!},
+              )
+            : _wordAudioReleaseStatusText(job, lang),
+    };
+  }
+
+  String _wordAudioReleaseStatusText(
+    WordAudioReleaseJobState job,
+    String lang,
+  ) {
+    if (job.error != null) {
+      return AppStrings.get(
+        'word_audio_release_error_detail',
+        lang,
+        params: {'msg': job.error!},
+      );
+    }
+    return switch (job.stage) {
+      WordAudioReleaseJobStage.planning => AppStrings.get(
+        'word_audio_release_stage_planning',
+        lang,
+      ),
+      WordAudioReleaseJobStage.ready => AppStrings.get(
+        'word_audio_release_stage_ready',
+        lang,
+      ),
+      WordAudioReleaseJobStage.synthesizing => AppStrings.get(
+        'word_audio_release_stage_synthesizing',
+        lang,
+      ),
+      WordAudioReleaseJobStage.validating => AppStrings.get(
+        'word_audio_release_stage_validating',
+        lang,
+      ),
+      WordAudioReleaseJobStage.packaging => AppStrings.get(
+        'word_audio_release_stage_packaging',
+        lang,
+      ),
+      WordAudioReleaseJobStage.publishing => AppStrings.get(
+        'word_audio_release_stage_publishing',
+        lang,
+      ),
+      WordAudioReleaseJobStage.verifying => AppStrings.get(
+        'word_audio_release_stage_verifying',
+        lang,
+      ),
+      WordAudioReleaseJobStage.generated => AppStrings.get(
+        'word_audio_release_generated',
+        lang,
+      ),
+      WordAudioReleaseJobStage.published => AppStrings.get(
+        'word_audio_release_published',
+        lang,
+      ),
+      WordAudioReleaseJobStage.verified => AppStrings.get(
+        'word_audio_release_verified',
+        lang,
+      ),
+      WordAudioReleaseJobStage.interactiveSudoRequired => AppStrings.get(
+        'word_audio_release_sudo_required',
+        lang,
+      ),
+      WordAudioReleaseJobStage.interactivePublisherOpened => AppStrings.get(
+        'word_audio_release_interactive_opened',
+        lang,
+      ),
+      WordAudioReleaseJobStage.synthesisFailed => AppStrings.get(
+        'word_audio_release_synthesis_failed',
+        lang,
+      ),
+      WordAudioReleaseJobStage.validationFailed => AppStrings.get(
+        'word_audio_release_validation_failed',
+        lang,
+      ),
+      WordAudioReleaseJobStage.cancelled => AppStrings.get(
+        'word_audio_release_cancelled',
+        lang,
+      ),
+      WordAudioReleaseJobStage.unsupported => AppStrings.get(
+        'word_audio_release_unsupported',
+        lang,
+      ),
+      WordAudioReleaseJobStage.failed => AppStrings.get(
+        'word_audio_release_failed',
+        lang,
+      ),
+      WordAudioReleaseJobStage.idle => '',
+    };
+  }
+
   Widget _ttsCacheStatusCard(
     ThemeData theme,
     String lang,
-    _TtsPreCacheJobState job,
-  ) {
+    _TtsPreCacheJobState job, {
+    required bool wordAudioReleaseRunning,
+  }) {
+    final ttsWorkRunning = job.isRunning || wordAudioReleaseRunning;
     final statuses = job.cacheStatuses;
     final completed = statuses.where((status) => status.isComplete).length;
     final failed = statuses.fold<int>(
@@ -1280,9 +4746,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               FilledButton.icon(
-                onPressed: job.isRunning
+                onPressed: ttsWorkRunning
                     ? null
-                    : () => _preCacheCet4Doubao(lang, onlyIncomplete: true),
+                    : () => _preCacheCet4Qwen(lang, onlyIncomplete: true),
                 icon: const Icon(Icons.playlist_add_check, size: 18),
                 label: Text(AppStrings.get('tts_cache_incomplete', lang)),
               ),
@@ -1348,9 +4814,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         TextButton(
-                          onPressed: job.isRunning
+                          onPressed: ttsWorkRunning
                               ? null
-                              : () => _preCacheCet4Doubao(
+                              : () => _preCacheCet4Qwen(
                                   lang,
                                   targetListId: status.listId,
                                 ),
@@ -1372,8 +4838,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _ttsCacheHealthCard(
     ThemeData theme,
     String lang,
-    _TtsCacheMaintenanceState state,
-  ) {
+    _TtsCacheMaintenanceState state, {
+    required bool wordAudioReleaseRunning,
+  }) {
     final report = state.report;
     return Card(
       child: Padding(
@@ -1461,7 +4928,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: state.isCleaning
+                  onPressed: state.isCleaning || wordAudioReleaseRunning
                       ? null
                       : () => ref
                             .read(_ttsCacheMaintenanceProvider.notifier)
@@ -1497,10 +4964,138 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _ttsCacheLimitCard(
+    ThemeData theme,
+    String lang,
+    _TtsCacheMaintenanceState state,
+    _TtsPreCacheJobState job, {
+    required bool wordAudioReleaseRunning,
+  }) {
+    final configuredLimitMb = _ttsCacheLimitMb();
+    final limitLabel = configuredLimitMb == 0
+        ? AppStrings.get('tts_cache_limit_unlimited', lang)
+        : '${configuredLimitMb ?? TtsService.defaultQwenCacheLimitMb} MB';
+    final report = state.report;
+    final result = state.limitResult;
+    final isBusy =
+        state.isApplyingLimit || job.isRunning || wordAudioReleaseRunning;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.storage_outlined, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppStrings.get('tts_cache_limit_title', lang),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              AppStrings.get('tts_cache_limit_desc', lang),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ttsCacheLimitMbController,
+              enabled: !isBusy,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: _saveTtsCacheLimitMb,
+              decoration: InputDecoration(
+                labelText: AppStrings.get('tts_cache_limit_label', lang),
+                hintText: AppStrings.get('tts_cache_limit_hint', lang),
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (report != null)
+              Text(
+                AppStrings.get(
+                  'tts_cache_limit_summary',
+                  lang,
+                  params: {
+                    'used': _formatBytes(report.totalBytes),
+                    'limit': limitLabel,
+                  },
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: isBusy ? null : () => _applyTtsCacheLimit(lang),
+                icon: state.isApplyingLimit
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cleaning_services_outlined, size: 18),
+                label: Text(AppStrings.get('tts_cache_limit_apply', lang)),
+              ),
+            ),
+            if (result != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                AppStrings.get(
+                  'tts_cache_limit_done',
+                  lang,
+                  params: {
+                    'files': result.removedFiles.toString(),
+                    'bytes': _formatBytes(result.removedBytes),
+                    'used': _formatBytes(result.afterBytes),
+                  },
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
+  String _formatPreCacheFailure(TtsPreCacheFailure failure, String lang) {
+    final message = switch (failure.audioValidationFailure) {
+      QwenWordAudioValidationFailure.invalidWav => AppStrings.get(
+        'tts_precache_audio_invalid_wav',
+        lang,
+      ),
+      QwenWordAudioValidationFailure.unexpectedFormat => AppStrings.get(
+        'tts_precache_audio_unexpected_format',
+        lang,
+      ),
+      QwenWordAudioValidationFailure.tooShort => AppStrings.get(
+        'tts_precache_audio_too_short',
+        lang,
+      ),
+      QwenWordAudioValidationFailure.silent => AppStrings.get(
+        'tts_precache_audio_silent',
+        lang,
+      ),
+      null => failure.message,
+    };
+    return '${failure.text}: $message';
   }
 
   @override
@@ -1508,11 +5103,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final theme = Theme.of(context);
     final lang = ref.watch(languageProvider);
     final preCacheJob = ref.watch(_ttsPreCacheJobProvider);
+    final wordAudioReleaseJob = ref.watch(wordAudioReleaseJobProvider);
+    final qwen3ExampleAudioReleaseJob = ref.watch(
+      qwen3ExampleAudioReleaseJobProvider,
+    );
+    final tencentWeWinnyExampleAudioReleaseJob = ref.watch(
+      tencentWeWinnyExampleAudioReleaseJobProvider,
+    );
     final cacheMaintenance = ref.watch(_ttsCacheMaintenanceProvider);
     final usageSummary = ref.watch(_ttsUsageSummaryProvider);
     final aiUsageSummary = ref.watch(_aiUsageSummaryProvider);
     final recentUsageRecords = ref.watch(_ttsRecentUsageRecordsProvider);
     final preCacheListCount = _ttsPreCacheListCount();
+    final anyWordAudioGenerationRunning =
+        preCacheJob.isRunning ||
+        wordAudioReleaseJob.isRunning ||
+        qwen3ExampleAudioReleaseJob.isRunning ||
+        tencentWeWinnyExampleAudioReleaseJob.isRunning;
 
     if (!_loaded) {
       _loadSettings();
@@ -1837,70 +5444,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // ─── TTS Speed ─────────────────────────────────────────────
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.speed),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          AppStrings.get('tts_speed_label', lang),
-                          style: theme.textTheme.titleSmall,
-                        ),
-                      ),
-                      Text(
-                        '${_ttsSpeed.toStringAsFixed(2)}x',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Slider(
-                    value: _ttsSpeed,
-                    min: 0.25,
-                    max: 1.0,
-                    divisions: 15,
-                    onChanged: _saveTtsSpeed,
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '0.25x',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.4,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '1.0x',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
           // ─── TTS Provider ───────────────────────────────────────────
           _sectionHeader(
             AppStrings.get('tts_section', lang),
             Icons.record_voice_over_outlined,
           ),
+          const SizedBox(height: 8),
+          _wordAudioPlaybackCard(theme, lang),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -1920,20 +5470,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     runSpacing: 8,
                     children: [
                       _ttsProviderChip(
-                        value: 'supertonic',
-                        label: AppStrings.get('tts_supertonic', lang),
-                      ),
-                      _ttsProviderChip(
                         value: 'qwen',
                         label: AppStrings.get('tts_qwen', lang),
                       ),
                       _ttsProviderChip(
-                        value: 'doubao',
-                        label: AppStrings.get('tts_doubao', lang),
+                        value: TtsService.qwen3FlashKaterinaProvider,
+                        label: AppStrings.get('tts_qwen3_flash_katerina', lang),
                       ),
                       _ttsProviderChip(
-                        value: 'sapi',
-                        label: AppStrings.get('tts_sapi', lang),
+                        value: 'doubao',
+                        label: AppStrings.get('tts_doubao', lang),
                       ),
                       _ttsProviderChip(
                         value: 'openai',
@@ -1947,6 +5493,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           // ─── Cloud TTS configuration (Qwen / OpenAI / Doubao) ────────────
           if (_ttsProvider == 'qwen' ||
+              _ttsProvider == TtsService.qwen3FlashKaterinaProvider ||
               _ttsProvider == 'openai' ||
               _ttsProvider == 'doubao') ...[
             const SizedBox(height: 8),
@@ -1960,11 +5507,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       children: [
                         const Icon(Icons.cloud_outlined, size: 18),
                         const SizedBox(width: 8),
-                        Text(switch (_ttsProvider) {
-                          'qwen' => AppStrings.get('tts_qwen_title', lang),
-                          'openai' => AppStrings.get('tts_openai_title', lang),
-                          _ => AppStrings.get('tts_doubao_title', lang),
-                        }, style: theme.textTheme.titleSmall),
+                        Text(
+                          _ttsProfileTitle(lang),
+                          style: theme.textTheme.titleSmall,
+                        ),
                       ],
                     ),
                     const Divider(),
@@ -1998,11 +5544,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onChanged: _saveTtsBaseUrl,
                       decoration: InputDecoration(
                         labelText: AppStrings.get('tts_base_url_label', lang),
-                        hintText: switch (_ttsProvider) {
-                          'qwen' => 'https://dashscope.aliyuncs.com',
-                          'openai' => 'https://api.openai.com',
-                          _ => 'https://openspeech.bytedance.com',
-                        },
+                        hintText: _ttsBaseUrlHint(),
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -2014,13 +5556,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     TextField(
                       controller: _ttsModelController,
                       onChanged: _saveTtsModel,
+                      readOnly: _isQwenTtsProfile(_ttsProvider),
                       decoration: InputDecoration(
                         labelText: AppStrings.get('tts_model_label', lang),
-                        hintText: switch (_ttsProvider) {
-                          'qwen' => 'qwen3-tts-flash',
-                          'doubao' => 'seed-tts-2.0-standard',
-                          _ => 'tts-1',
-                        },
+                        hintText: _ttsModelHint(),
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -2032,13 +5571,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     TextField(
                       controller: _ttsVoiceController,
                       onChanged: _saveTtsVoice,
+                      readOnly: _isQwenTtsProfile(_ttsProvider),
                       decoration: InputDecoration(
                         labelText: AppStrings.get('tts_voice_label', lang),
-                        hintText: switch (_ttsProvider) {
-                          'qwen' => 'Jennifer',
-                          'doubao' => 'zh_female_tiexinnvsheng_mars_bigtts',
-                          _ => 'alloy',
-                        },
+                        hintText: _ttsVoiceHint(),
                         border: const OutlineInputBorder(),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -2046,17 +5582,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ),
                     ),
-                    if (_ttsProvider == 'doubao') ...[
+                    if (_isQwenTtsProfile(_ttsProvider) ||
+                        _ttsProvider == 'doubao') ...[
                       const SizedBox(height: 12),
                       TextField(
                         controller: _ttsAppIdController,
                         onChanged: _saveTtsAppId,
                         decoration: InputDecoration(
                           labelText: AppStrings.get(
-                            'tts_resource_id_label',
+                            _isQwenTtsProfile(_ttsProvider)
+                                ? 'tts_workspace_id_label'
+                                : 'tts_resource_id_label',
                             lang,
                           ),
-                          hintText: 'seed-tts-2.0',
+                          hintText: _isQwenTtsProfile(_ttsProvider)
+                              ? 'ws-xxxxxxxxxxxxxxxx'
+                              : 'seed-tts-2.0',
                           border: const OutlineInputBorder(),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -2064,6 +5605,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                       ),
+                    ],
+                    if (_ttsProvider == 'qwen') ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        AppStrings.get('tts_qwen_word_audio_profile', lang),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        AppStrings.get(
+                          'tts_qwen_word_audio_profile_desc',
+                          lang,
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (_isQwenTtsProfile(_ttsProvider)) ...[
+                      const SizedBox(height: 12),
+                      _qwenTtsProfileSummary(theme, lang),
                     ],
                     const SizedBox(height: 16),
                     Row(
@@ -2152,6 +5716,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           style: theme.textTheme.bodySmall,
                         ),
                       ),
+                    ],
+                    if (_ttsProvider == 'qwen') ...[
+                      const SizedBox(height: 16),
+                      const Divider(),
                       const SizedBox(height: 8),
                       _ttsUsageStatsCard(
                         theme,
@@ -2160,9 +5728,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         recentUsageRecords,
                       ),
                       const SizedBox(height: 8),
-                      _ttsCacheStatusCard(theme, lang, preCacheJob),
+                      _wordAudioRepairCard(
+                        theme,
+                        lang,
+                        enabled: !anyWordAudioGenerationRunning,
+                      ),
                       const SizedBox(height: 8),
-                      _ttsCacheHealthCard(theme, lang, cacheMaintenance),
+                      _wordAudioReleaseCard(
+                        theme,
+                        lang,
+                        wordAudioReleaseJob,
+                        ttsPreCacheRunning: preCacheJob.isRunning,
+                        cacheJob: preCacheJob,
+                      ),
+                      const SizedBox(height: 8),
+                      _ttsCacheStatusCard(
+                        theme,
+                        lang,
+                        preCacheJob,
+                        wordAudioReleaseRunning: wordAudioReleaseJob.isRunning,
+                      ),
+                      const SizedBox(height: 8),
+                      _ttsCacheLimitCard(
+                        theme,
+                        lang,
+                        cacheMaintenance,
+                        preCacheJob,
+                        wordAudioReleaseRunning: wordAudioReleaseJob.isRunning,
+                      ),
+                      const SizedBox(height: 8),
+                      _ttsCacheHealthCard(
+                        theme,
+                        lang,
+                        cacheMaintenance,
+                        wordAudioReleaseRunning: wordAudioReleaseJob.isRunning,
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         AppStrings.get(
@@ -2179,7 +5779,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: _ttsPreCacheListCountController,
-                        enabled: !preCacheJob.isRunning,
+                        enabled: !anyWordAudioGenerationRunning,
                         keyboardType: TextInputType.number,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
@@ -2206,10 +5806,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: preCacheJob.isRunning
+                              onPressed: anyWordAudioGenerationRunning
                                   ? null
-                                  : () => _preCacheCet4Doubao(lang),
-                              icon: preCacheJob.isRunning
+                                  : () => _preCacheCet4Qwen(lang),
+                              icon: anyWordAudioGenerationRunning
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
@@ -2262,16 +5862,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         _ttsPreCacheStatusCard(theme, lang, preCacheJob),
                       ],
                     ],
+                    if (_ttsProvider ==
+                        TtsService.qwen3FlashKaterinaProvider) ...[
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      _qwen3ExampleAudioReleaseCard(
+                        theme,
+                        lang,
+                        qwen3ExampleAudioReleaseJob,
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
           ],
-          // ─── Model download status (Supertonic only) ──────────────
-          if (_ttsProvider == 'supertonic') ...[
-            const SizedBox(height: 8),
-            _ModelDownloadCard(lang: lang),
-          ],
+          const SizedBox(height: 8),
+          _tencentWeWinnyExampleAudioReleaseCard(
+            theme,
+            lang,
+            tencentWeWinnyExampleAudioReleaseJob,
+          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -2498,158 +6110,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(width: 8),
         Text(title, style: Theme.of(context).textTheme.titleSmall),
       ],
-    );
-  }
-}
-
-class _ModelDownloadCard extends ConsumerWidget {
-  const _ModelDownloadCard({required this.lang});
-
-  final String lang;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final state = ref.watch(ttsModelStateProvider);
-
-    return state.when(
-      data: (modelState) {
-        return switch (modelState) {
-          TtsModelReady(modelDir: final _) => Card(
-            color: Colors.green.withValues(alpha: 0.08),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green),
-                  const SizedBox(width: 12),
-                  Text(
-                    AppStrings.get('tts_model_ready', lang),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.green.shade700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          TtsModelNotDownloaded() => Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.install_mobile_outlined),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          AppStrings.get('tts_model_not_downloaded', lang),
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    AppStrings.get('tts_download_warning', lang),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: () {
-                      ref.read(ttsModelManagerProvider).downloadModel();
-                    },
-                    icon: const Icon(Icons.install_mobile, size: 18),
-                    label: Text(AppStrings.get('tts_download_model', lang)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          TtsModelDownloading(progress: final p) => Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        AppStrings.get(
-                          'tts_model_downloading',
-                          lang,
-                          params: {'progress': (p * 100).toStringAsFixed(0)},
-                        ),
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  LinearProgressIndicator(value: p),
-                ],
-              ),
-            ),
-          ),
-          TtsModelError(message: final msg) => Card(
-            color: Colors.red.withValues(alpha: 0.06),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          AppStrings.get(
-                            'tts_model_error',
-                            lang,
-                            params: {'error': msg},
-                          ),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.red.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      ref.read(ttsModelManagerProvider).downloadModel();
-                    },
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: Text(AppStrings.get('tts_retry_download', lang)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        };
-      },
-      loading: () => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-      ),
-      error: (e, _) => const SizedBox.shrink(),
     );
   }
 }

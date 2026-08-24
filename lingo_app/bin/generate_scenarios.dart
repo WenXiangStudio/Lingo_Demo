@@ -1,13 +1,15 @@
-/// Batch script: generate scenario_example sentences for word book CSVs.
-///
-/// Usage:
-///   dart run bin/generate_scenarios.dart <input.csv> [--apikey KEY] [--provider openai|deepseek|...] [--batch N]
-///
-/// The script reads a CSV with columns: english, chinese_meanings, pronunciation
-/// and writes a new CSV with an added `scenario_example` column.
-///
-/// Requires an API key. Set DART_AI_API_KEY env var or pass --apikey.
-/// Default provider: openai (gpt-4o-mini for cost efficiency).
+// ignore_for_file: avoid_print
+
+// Batch script: generate scenario_example sentences for word book CSVs.
+//
+// Usage:
+//   dart run bin/generate_scenarios.dart <input.csv> [--apikey KEY]
+//
+// The script reads a CSV with columns: english, chinese_meanings, pronunciation
+// and writes a new CSV with an added scenario_example column.
+//
+// Requires an API key. Set DART_AI_API_KEY env var or pass --apikey.
+// Default provider: openai (gpt-4o-mini for cost efficiency).
 
 import 'dart:convert';
 import 'dart:io';
@@ -21,7 +23,9 @@ String _prompt(String word, String meaning) =>
 
 void main(List<String> args) async {
   if (args.isEmpty || args.first == '--help') {
-    print('Usage: dart run bin/generate_scenarios.dart <input.csv> [--apikey KEY] [--provider openai|deepseek] [--batch 5]');
+    print(
+      'Usage: dart run bin/generate_scenarios.dart <input.csv> [--apikey KEY] [--provider openai|deepseek] [--batch 5]',
+    );
     print('Env: DART_AI_API_KEY');
     return;
   }
@@ -46,7 +50,9 @@ void main(List<String> args) async {
   }
 
   if (apiKey == null || apiKey.isEmpty) {
-    stderr.writeln('API key required. Set DART_AI_API_KEY env var or pass --apikey.');
+    stderr.writeln(
+      'API key required. Set DART_AI_API_KEY env var or pass --apikey.',
+    );
     exit(1);
   }
 
@@ -58,7 +64,9 @@ void main(List<String> args) async {
     exit(1);
   }
 
-  final header = rows.first.map((c) => c.toString().trim().toLowerCase()).toList();
+  final header = rows.first
+      .map((c) => c.toString().trim().toLowerCase())
+      .toList();
   final engIdx = header.indexOf('english');
   final chnIdx = header.indexOf('chinese_meanings');
 
@@ -89,7 +97,9 @@ void main(List<String> args) async {
   final outputFile = File(outputPath);
 
   final scenarioIdx = header.indexOf('scenario_example');
-  final newHeader = List<String>.from(rows.first.map((c) => c.toString().trim()));
+  final newHeader = List<String>.from(
+    rows.first.map((c) => c.toString().trim()),
+  );
   if (scenarioIdx == -1) {
     newHeader.add('scenario_example');
   }
@@ -102,7 +112,13 @@ void main(List<String> args) async {
 
     String sentence = '';
     try {
-      sentence = await _generateOne(w.english, w.chinese, baseUrl, model, apiKey);
+      sentence = await _generateOne(
+        w.english,
+        w.chinese,
+        baseUrl,
+        model,
+        apiKey,
+      );
       stdout.writeln(sentence);
     } catch (e) {
       stdout.writeln('ERROR: $e');
@@ -110,7 +126,9 @@ void main(List<String> args) async {
 
     // Write row
     final originalRow = rows[i + 1];
-    final newRow = List<String>.from(originalRow.map((c) => c.toString().trim()));
+    final newRow = List<String>.from(
+      originalRow.map((c) => c.toString().trim()),
+    );
     while (newRow.length < newHeader.length - 1) {
       newRow.add('');
     }
@@ -135,7 +153,9 @@ Future<String> _generateOne(
 ) async {
   final client = HttpClient();
   try {
-    final request = await client.postUrl(Uri.parse('$baseUrl/v1/chat/completions'));
+    final request = await client.postUrl(
+      Uri.parse('$baseUrl/v1/chat/completions'),
+    );
     request.headers.set('Authorization', 'Bearer $apiKey');
     request.headers.set('Content-Type', 'application/json');
 
@@ -193,7 +213,9 @@ dynamic _extractJson(String content) {
     case 'glm':
       return ('https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash');
     default:
-      throw ArgumentError('Unknown provider: $provider. Use openai, deepseek, kimi, or glm.');
+      throw ArgumentError(
+        'Unknown provider: $provider. Use openai, deepseek, kimi, or glm.',
+      );
   }
 }
 

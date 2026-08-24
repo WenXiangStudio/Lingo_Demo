@@ -71,6 +71,18 @@ void main() {
       expect(prompt, contains('tiny'));
     });
 
+    test('collocation prompt anchors translations to the studied sense', () {
+      final prompt = AiPrompts.collocationsPrompt(
+        ['duck'],
+        targetMeanings: {'duck': '鸭；鸭子；鸭肉'},
+      );
+
+      expect(prompt, contains('dictionary_chinese_meanings'));
+      expect(prompt, contains('鸭；鸭子；鸭肉'));
+      expect(prompt, contains('duck out of'));
+      expect(prompt, contains('Never use an idiom'));
+    });
+
     test('uses DeepSeek JSON object output for option validation', () async {
       late Map<String, dynamic> requestBody;
       final dio = Dio(BaseOptions(baseUrl: 'http://ai.test'))

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only. Replace LIGHTHOUSE_PUBLIC_IP with the fixed Lighthouse
+  public IP, then move this file to res/xml/network_security_config.xml and
+  add android:networkSecurityConfig="@xml/network_security_config" to the
+  <application> element in src/debug/AndroidManifest.xml.
+
+  Do not copy this configuration to src/main. Release builds must use an
+  HTTPS domain after the domain and ICP workflow is complete.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">LIGHTHOUSE_PUBLIC_IP</domain>
+    </domain-config>
+</network-security-config>

@@ -11,6 +11,7 @@ class PracticeSetupScreen extends ConsumerWidget {
   final int listId;
   final bool onlyForgotten;
   final bool onlyErrors;
+  final bool trackExampleReveals;
   final String returnPath;
 
   const PracticeSetupScreen({
@@ -18,6 +19,7 @@ class PracticeSetupScreen extends ConsumerWidget {
     required this.listId,
     this.onlyForgotten = false,
     this.onlyErrors = false,
+    this.trackExampleReveals = false,
     required this.returnPath,
   });
 
@@ -130,6 +132,7 @@ class PracticeSetupScreen extends ConsumerWidget {
                         mode: state.mode!,
                         onlyForgotten: onlyForgotten,
                         onlyErrors: onlyErrors,
+                        trackExampleReveals: trackExampleReveals,
                       );
                       if (context.mounted) {
                         context.push(

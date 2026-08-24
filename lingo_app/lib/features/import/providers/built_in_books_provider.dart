@@ -1,35 +1,42 @@
 import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class BuiltInWordBook {
-  final String name;
+  final String nameKey;
   final String assetPath;
   final int wordCount;
 
   const BuiltInWordBook({
-    required this.name,
+    required this.nameKey,
     required this.assetPath,
     required this.wordCount,
   });
 }
 
-final builtInWordBooksProvider = FutureProvider<List<BuiltInWordBook>>((ref) async {
+final builtInWordBooksProvider = FutureProvider<List<BuiltInWordBook>>((
+  ref,
+) async {
   const defs = [
-    ('CET-4', 'assets/word_books/CET4.csv'),
-    ('CET-6', 'assets/word_books/CET6.csv'),
-    ('考研', 'assets/word_books/KAOYAN.csv'),
+    ('book_cet4', 'assets/word_books/CET4.csv'),
+    ('book_cet6', 'assets/word_books/CET6.csv'),
+    ('book_kaoyan', 'assets/word_books/KAOYAN.csv'),
   ];
 
   final books = <BuiltInWordBook>[];
-  for (final (name, assetPath) in defs) {
+  for (final (nameKey, assetPath) in defs) {
     try {
       final content = await rootBundle.loadString(assetPath);
-      final normalized = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      final normalized = content
+          .replaceAll('\r\n', '\n')
+          .replaceAll('\r', '\n');
       final rows = const CsvToListConverter(eol: '\n').convert(normalized);
       if (rows.isEmpty) continue;
 
-      final header = rows.first.map((c) => c.toString().trim().toLowerCase()).toList();
+      final header = rows.first
+          .map((c) => c.toString().trim().toLowerCase())
+          .toList();
       final englishIdx = header.indexOf('english');
       final chineseIdx = header.indexOf('chinese_meanings');
       if (englishIdx == -1 || chineseIdx == -1) continue;
@@ -43,10 +50,15 @@ final builtInWordBooksProvider = FutureProvider<List<BuiltInWordBook>>((ref) asy
         if (english.isNotEmpty && chinese.isNotEmpty) count++;
       }
 
-      books.add(BuiltInWordBook(name: name, assetPath: assetPath, wordCount: count));
+      books.add(
+        BuiltInWordBook(
+          nameKey: nameKey,
+          assetPath: assetPath,
+          wordCount: count,
+        ),
+      );
     } catch (e) {
-      // If one book fails, still try the rest
-      print('BuiltInBooks: failed to load $name ($assetPath): $e');
+      debugPrint('BuiltInBooks: failed to load $nameKey ($assetPath): $e');
     }
   }
   return books;

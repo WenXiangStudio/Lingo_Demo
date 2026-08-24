@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,8 @@ import '../../../core/services/tts_providers.dart';
 import '../../../core/utils/answer_checker.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/providers.dart';
+import '../../lists/providers/list_provider.dart';
+import '../../review_center/providers/review_center_provider.dart';
 import '../providers/practice_provider.dart';
 
 class PracticeQuizScreen extends ConsumerStatefulWidget {
@@ -26,6 +30,8 @@ class PracticeQuizScreen extends ConsumerStatefulWidget {
 class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
+  final Set<int> _cueMemoryWordIds = <int>{};
+  final Set<int> _forgottenWordIds = <int>{};
 
   @override
   void dispose() {
@@ -35,23 +41,61 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
   }
 
   Future<void> _speak(String text) async {
-    final result = await ref.read(ttsServiceProvider).speak(text);
-    if (!mounted || result.provider != 'doubao') return;
+    final result = await ref.read(ttsServiceProvider).speakWord(text);
+    if (!mounted || result.played) return;
     final lang = ref.read(languageProvider);
-    final key = switch (result.source) {
-      'cache' => 'tts_played_doubao_cache',
-      'api' => 'tts_played_doubao_api',
-      'api_disabled_missing_cache' => 'tts_doubao_cache_missing_api_disabled',
-      'api_failed' => 'tts_doubao_api_failed',
-      _ => null,
-    };
-    if (key == null) return;
+    final key = _wordAudioErrorKey(result.provider, result.source);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(AppStrings.get(key, lang)),
-        duration: const Duration(seconds: 1),
+        content: Text(
+          AppStrings.get(key, lang, params: {'msg': result.message ?? ''}),
+        ),
+        duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  String _wordAudioErrorKey(String provider, String source) {
+    if (provider == 'remote_word_audio') {
+      return switch (source) {
+        'remote_not_configured' => 'word_audio_server_not_configured',
+        'remote_invalid_url' => 'word_audio_server_invalid_url',
+        'remote_not_found' => 'word_audio_file_not_found',
+        'remote_timeout' => 'word_audio_timeout',
+        'remote_invalid_audio' => 'word_audio_invalid_file',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'word_audio_unavailable',
+      };
+    }
+
+    if (provider == 'qwen') {
+      return switch (source) {
+        'not_configured' => 'tts_qwen_not_configured',
+        'api_failed' => 'tts_qwen_api_failed_detail',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'word_audio_direct_failed',
+      };
+    }
+
+    if (provider == 'doubao') {
+      return switch (source) {
+        'not_configured' => 'word_audio_direct_not_configured',
+        'api_disabled_missing_cache' => 'tts_doubao_cache_missing_api_disabled',
+        'api_failed' => 'tts_doubao_api_failed',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'word_audio_direct_failed',
+      };
+    }
+
+    return switch (source) {
+      'not_configured' => 'word_audio_direct_not_configured',
+      'blocked' => 'word_audio_busy',
+      'not_ready' => 'word_audio_not_ready',
+      _ => 'word_audio_direct_failed',
+    };
   }
 
   void _submitText() {
@@ -59,6 +103,48 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
     if (state.phase != PracticePhase.quiz) return;
     ref.read(practiceProvider.notifier).submitTextAnswer(_textController.text);
     _focusNode.unfocus();
+  }
+
+  void _revealPracticeExample() {
+    ref.read(practiceProvider.notifier).revealCurrentExample();
+  }
+
+  Future<void> _markCueMemory(Word word, int listId) async {
+    final recordedIds =
+        ref.read(cueMemoryWordIdsProvider(listId)).valueOrNull ?? const <int>{};
+    final needsPersist = !recordedIds.contains(word.id);
+    if (!_cueMemoryWordIds.contains(word.id)) {
+      setState(() => _cueMemoryWordIds.add(word.id));
+    }
+    if (!needsPersist) return;
+    try {
+      await ref
+          .read(practiceRepositoryProvider)
+          .markWordCueMemory(word.id, listId);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _cueMemoryWordIds.remove(word.id));
+      }
+      return;
+    }
+    ref.invalidate(cueMemoryWordIdsProvider(listId));
+    ref.invalidate(reviewCenterDataProvider);
+  }
+
+  Future<void> _markCompletelyForgotten(Word word, int listId) async {
+    final recordedIds =
+        ref.read(forgottenWordIdsProvider(listId)).valueOrNull ?? const <int>{};
+    if (_forgottenWordIds.contains(word.id) || recordedIds.contains(word.id)) {
+      return;
+    }
+    await ref
+        .read(practiceRepositoryProvider)
+        .markWordForgotten(word.id, listId);
+    if (!mounted) return;
+    setState(() => _forgottenWordIds.add(word.id));
+    ref.invalidate(forgottenWordIdsProvider(listId));
+    ref.invalidate(forgottenWordsProvider(listId));
+    ref.invalidate(reviewCenterDataProvider);
   }
 
   @override
@@ -153,6 +239,8 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
     ThemeData theme, {
     required bool obscured,
     bool showPronunciation = true,
+    bool showAudioButton = false,
+    String? audioTooltip,
   }) {
     return Card(
       elevation: 0,
@@ -183,6 +271,15 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
+                ),
+              ),
+            if (!obscured && showAudioButton)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: IconButton.filledTonal(
+                  onPressed: () => _speak(word.english),
+                  icon: const Icon(Icons.volume_up),
+                  tooltip: audioTooltip,
                 ),
               ),
           ],
@@ -220,6 +317,20 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
     final correctAnswer = word.chineseMeanings;
     final isAudio = state.mode == PracticeMode.audioChoice;
     final shouldObscure = isAudio && !showFeedback;
+    final cueMemoryWordIds =
+        ref.watch(cueMemoryWordIdsProvider(widget.listId)).valueOrNull ??
+        const <int>{};
+    final forgottenWordIds =
+        ref.watch(forgottenWordIdsProvider(widget.listId)).valueOrNull ??
+        const <int>{};
+    final isCueMemoryRevealed = _cueMemoryWordIds.contains(word.id);
+    final isCueMemoryRecorded = cueMemoryWordIds.contains(word.id);
+    final isCompletelyForgotten =
+        _forgottenWordIds.contains(word.id) ||
+        forgottenWordIds.contains(word.id);
+    final selectedAnswer = state.answers.isEmpty
+        ? null
+        : state.answers.last.userAnswer;
 
     return Column(
       children: [
@@ -239,7 +350,14 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        _buildWordCard(context, word, theme, obscured: shouldObscure),
+        _buildWordCard(
+          context,
+          word,
+          theme,
+          obscured: shouldObscure,
+          showAudioButton: !isAudio,
+          audioTooltip: AppStrings.get('pronounce', lang),
+        ),
         const SizedBox(height: 8),
         Text(
           AppStrings.get(
@@ -250,72 +368,65 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
             color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
           ),
         ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _markCueMemory(word, state.listId ?? widget.listId),
+              icon: Icon(
+                isCueMemoryRecorded
+                    ? Icons.bookmark
+                    : Icons.bookmark_add_outlined,
+              ),
+              label: Text(
+                AppStrings.get(
+                  isCueMemoryRecorded
+                      ? 'cue_memory_marked'
+                      : 'cue_memory_button',
+                  lang,
+                ),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: isCompletelyForgotten
+                  ? null
+                  : () => _markCompletelyForgotten(
+                      word,
+                      state.listId ?? widget.listId,
+                    ),
+              icon: Icon(
+                isCompletelyForgotten ? Icons.flag : Icons.flag_outlined,
+              ),
+              label: Text(AppStrings.get('completely_forgotten', lang)),
+            ),
+          ],
+        ),
+        _buildPracticeExample(
+          word,
+          theme,
+          obscured: !showFeedback && !isCueMemoryRevealed,
+        ),
         const SizedBox(height: 24),
         ...options.map((option) {
           final isCorrectAnswer = AnswerChecker.isChoiceAnswerCorrect(
             option,
             correctAnswer,
           );
-          Color? bgColor;
-          Color? borderColor;
-
-          if (showFeedback) {
-            if (isCorrectAnswer) {
-              bgColor = Colors.green.withValues(alpha: 0.1);
-              borderColor = Colors.green;
-            } else if (!isCorrectAnswer &&
-                state.lastAnswerCorrect == false &&
-                option == state.answers.last.userAnswer) {
-              bgColor = Colors.red.withValues(alpha: 0.1);
-              borderColor = Colors.red;
-            }
-          }
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: showFeedback
-                    ? null
-                    : () => ref
-                          .read(practiceProvider.notifier)
-                          .submitChoiceAnswer(option),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.all(16),
-                  backgroundColor: bgColor,
-                  side: BorderSide(
-                    color: borderColor ?? theme.colorScheme.outline,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    if (showFeedback && isCorrectAnswer)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 10),
-                        child: Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 20,
-                        ),
-                      )
-                    else if (showFeedback &&
-                        option == state.answers.last.userAnswer &&
-                        !state.answers.last.isCorrect)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 10),
-                        child: Icon(Icons.cancel, color: Colors.red, size: 20),
-                      ),
-                    Expanded(
-                      child: Text(option, style: theme.textTheme.bodyLarge),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          return _BlurredChoiceOption(
+            key: ValueKey('${state.currentIndex}:$option'),
+            option: option,
+            showFeedback: showFeedback,
+            isCorrectAnswer: isCorrectAnswer,
+            isIncorrectSelected:
+                showFeedback && !isCorrectAnswer && option == selectedAnswer,
+            forceRevealed: isCueMemoryRevealed,
+            theme: theme,
+            onSubmit: () =>
+                ref.read(practiceProvider.notifier).submitChoiceAnswer(option),
           );
         }),
       ],
@@ -334,6 +445,16 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
     final showFeedback = state.phase == PracticePhase.feedback;
     final lastAnswer = state.answers.isNotEmpty ? state.answers.last : null;
     final isDictation = state.mode == PracticeMode.dictation;
+    final isFill = state.mode == PracticeMode.fill;
+    final isExampleCueTracking = isFill && state.trackExampleReveals;
+    final isExampleRevealed =
+        state.revealedExampleWordIds.contains(word.id) || showFeedback;
+    final forgottenWordIds =
+        ref.watch(forgottenWordIdsProvider(widget.listId)).valueOrNull ??
+        const <int>{};
+    final isCompletelyForgotten =
+        _forgottenWordIds.contains(word.id) ||
+        forgottenWordIds.contains(word.id);
 
     return Column(
       children: [
@@ -360,20 +481,39 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
         ],
 
         // Fill mode: show English word
-        if (state.mode == PracticeMode.fill) ...[
+        if (isFill) ...[
           Card(
             elevation: 0,
             color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-              child: Text(
-                word.english,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+              child: Column(
+                children: [
+                  Text(
+                    word.english,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  IconButton.filledTonal(
+                    onPressed: () => _speak(word.english),
+                    icon: const Icon(Icons.volume_up),
+                    tooltip: AppStrings.get('pronounce', lang),
+                  ),
+                ],
               ),
             ),
+          ),
+          const SizedBox(height: 8),
+          _buildPracticeExample(
+            word,
+            theme,
+            obscured: isExampleCueTracking && !isExampleRevealed,
+            canReveal: isExampleCueTracking && !showFeedback,
+            onReveal: _revealPracticeExample,
+            revealLabel: AppStrings.get('reveal_example', lang),
           ),
           const SizedBox(height: 8),
           Text(
@@ -384,6 +524,23 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
           ),
           const SizedBox(height: 24),
         ],
+
+        if (isFill && !showFeedback)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: OutlinedButton.icon(
+              onPressed: isCompletelyForgotten
+                  ? null
+                  : () => _markCompletelyForgotten(
+                      word,
+                      state.listId ?? widget.listId,
+                    ),
+              icon: Icon(
+                isCompletelyForgotten ? Icons.flag : Icons.flag_outlined,
+              ),
+              label: Text(AppStrings.get('completely_forgotten', lang)),
+            ),
+          ),
 
         // Text input
         TextField(
@@ -458,6 +615,12 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
           ),
         ],
 
+        if (showFeedback &&
+            lastAnswer != null &&
+            isFill &&
+            !lastAnswer.isCorrect)
+          _buildInvalidFillParts(lastAnswer, theme, lang),
+
         // Show missing meanings for fill / dictation mode (multi-meaning feedback)
         if (showFeedback &&
             lastAnswer != null &&
@@ -465,6 +628,72 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
                 state.mode == PracticeMode.dictation))
           _buildMissingMeanings(context, word, lastAnswer, theme, lang),
       ],
+    );
+  }
+
+  Widget _buildPracticeExample(
+    Word word,
+    ThemeData theme, {
+    required bool obscured,
+    bool canReveal = false,
+    VoidCallback? onReveal,
+    String? revealLabel,
+  }) {
+    final example = word.scenarioExample?.trim().isNotEmpty == true
+        ? word.scenarioExample!.trim()
+        : word.exampleSentence?.trim();
+    if (example == null || example.isEmpty) return const SizedBox.shrink();
+    final text = Text(
+      example,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+      ),
+      textAlign: TextAlign.left,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.28),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: obscured
+            ? Stack(
+                children: [
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                    child: text,
+                  ),
+                  Positioned.fill(
+                    child: canReveal
+                        ? Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: onReveal,
+                              borderRadius: BorderRadius.circular(8),
+                              child: Center(
+                                child: IconButton.filledTonal(
+                                  onPressed: onReveal,
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: revealLabel,
+                                ),
+                              ),
+                            ),
+                          )
+                        : DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface.withValues(
+                                alpha: 0.55,
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              )
+            : text,
+      ),
     );
   }
 
@@ -519,6 +748,48 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvalidFillParts(
+    AnswerRecord lastAnswer,
+    ThemeData theme,
+    String lang,
+  ) {
+    final invalidParts = AnswerChecker.invalidFillAnswerParts(
+      lastAnswer.userAnswer ?? '',
+      lastAnswer.correctAnswer,
+    );
+    if (invalidParts.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            Text(
+              AppStrings.get('invalid_meanings', lang),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: Colors.red.shade700,
+              ),
+            ),
+            ...invalidParts.map(
+              (part) => Text(
+                part,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.red.shade700,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                  decorationColor: Colors.red.shade700,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -641,5 +912,121 @@ class _PracticeQuizScreenState extends ConsumerState<PracticeQuizScreen> {
       ref.read(practiceProvider.notifier).reset();
       context.go(widget.returnPath);
     }
+  }
+}
+
+class _BlurredChoiceOption extends StatefulWidget {
+  final String option;
+  final bool showFeedback;
+  final bool isCorrectAnswer;
+  final bool isIncorrectSelected;
+  final bool forceRevealed;
+  final ThemeData theme;
+  final VoidCallback onSubmit;
+
+  const _BlurredChoiceOption({
+    super.key,
+    required this.option,
+    required this.showFeedback,
+    required this.isCorrectAnswer,
+    required this.isIncorrectSelected,
+    required this.forceRevealed,
+    required this.theme,
+    required this.onSubmit,
+  });
+
+  @override
+  State<_BlurredChoiceOption> createState() => _BlurredChoiceOptionState();
+}
+
+class _BlurredChoiceOptionState extends State<_BlurredChoiceOption> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isObscured =
+        !widget.showFeedback && !widget.forceRevealed && !_revealed;
+    Color? backgroundColor;
+    Color? borderColor;
+    if (widget.showFeedback && widget.isCorrectAnswer) {
+      backgroundColor = Colors.green.withValues(alpha: 0.1);
+      borderColor = Colors.green;
+    } else if (widget.showFeedback && widget.isIncorrectSelected) {
+      backgroundColor = Colors.red.withValues(alpha: 0.1);
+      borderColor = Colors.red;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: widget.showFeedback
+              ? null
+              : () {
+                  if (!widget.forceRevealed && !_revealed) {
+                    setState(() => _revealed = true);
+                    return;
+                  }
+                  widget.onSubmit();
+                },
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.all(16),
+            backgroundColor: backgroundColor,
+            side: BorderSide(
+              color: borderColor ?? widget.theme.colorScheme.outline,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: Row(
+            children: [
+              if (widget.showFeedback && widget.isCorrectAnswer)
+                const Padding(
+                  padding: EdgeInsets.only(right: 10),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 20,
+                  ),
+                )
+              else if (widget.showFeedback && widget.isIncorrectSelected)
+                const Padding(
+                  padding: EdgeInsets.only(right: 10),
+                  child: Icon(Icons.cancel, color: Colors.red, size: 20),
+                ),
+              Expanded(
+                child: isObscured
+                    ? Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          ImageFiltered(
+                            imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                            child: Text(
+                              widget.option,
+                              style: widget.theme.textTheme.bodyLarge,
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: widget.theme.colorScheme.surface
+                                    .withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        widget.option,
+                        style: widget.theme.textTheme.bodyLarge,
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

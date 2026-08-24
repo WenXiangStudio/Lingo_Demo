@@ -1,0 +1,40 @@
+# Ubuntu 24.04 / Nginx static word-audio configuration.
+#
+# Replace LIGHTHOUSE_PUBLIC_IP before installing as
+# /etc/nginx/sites-available/lingo-word-audio. The Android/Windows app uses
+# http://LIGHTHOUSE_PUBLIC_IP/audio as its development base address.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name LIGHTHOUSE_PUBLIC_IP;
+
+    # A word request for /audio/v1/en/<sha256>.wav resolves to
+    # /var/www/lingo-word-audio/audio/v1/en/<sha256>.wav. Qwen3 example
+    # requests use the nested /audio/v1/en/examples/ directory under the
+    # same root, so no second Nginx server block is required.
+    root /var/www/lingo-word-audio;
+    server_tokens off;
+
+    location = /audio {
+        return 404;
+    }
+
+    location ^~ /audio/ {
+        try_files $uri =404;
+        autoindex off;
+
+        # Do not rely on the distribution mime.types mapping: make the WAV
+        # response type explicit for Android and desktop audio players.
+        types {
+            audio/wav wav;
+        }
+        default_type application/octet-stream;
+        add_header Cache-Control "public, max-age=86400" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    location / {
+        return 404;
+    }
+}

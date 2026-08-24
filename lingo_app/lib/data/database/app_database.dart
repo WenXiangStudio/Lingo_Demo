@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/data_dir.dart';
@@ -57,6 +56,8 @@ class ListWords extends Table {
   IntColumn get sortOrder => integer()();
   BoolColumn get isForgotten => boolean().withDefault(const Constant(false))();
   IntColumn get forgottenCount => integer().withDefault(const Constant(0))();
+  BoolColumn get isCueMemory => boolean().withDefault(const Constant(false))();
+  IntColumn get cueMemoryCount => integer().withDefault(const Constant(0))();
 
   @override
   String get tableName => 'list_words';
@@ -69,6 +70,9 @@ class PracticeSessions extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get listId => integer().references(WordLists, #id)();
   TextColumn get mode => text().withLength(min: 1, max: 20)();
+  TextColumn get sessionKind => text()
+      .withLength(min: 1, max: 30)
+      .withDefault(const Constant(PracticeSessionKind.memorization))();
   IntColumn get totalCount => integer()();
   IntColumn get correctCount => integer()();
   RealColumn get accuracy => real()();
@@ -128,6 +132,64 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+class LearningActivityRecords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get activityType => text().withLength(min: 1, max: 30)();
+  TextColumn get subtype => text().nullable()();
+  TextColumn get status => text().withLength(min: 1, max: 20)();
+  IntColumn get startedAt => integer()();
+  IntColumn get finishedAt => integer().nullable()();
+  IntColumn get questionCount => integer().withDefault(const Constant(0))();
+  IntColumn get correctCount => integer().withDefault(const Constant(0))();
+  RealColumn get accuracy => real().nullable()();
+  IntColumn get turnCount => integer().withDefault(const Constant(0))();
+  IntColumn get targetWordUseCount =>
+      integer().withDefault(const Constant(0))();
+  RealColumn get naturalnessAverage => real().nullable()();
+  RealColumn get contextFitAverage => real().nullable()();
+  IntColumn get skillRunCount => integer().withDefault(const Constant(0))();
+  IntColumn get involvedWordCount => integer().withDefault(const Constant(0))();
+
+  @override
+  String get tableName => 'learning_activity_records';
+}
+
+class LearningActivityLists extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get activityId => integer().references(
+    LearningActivityRecords,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get listId =>
+      integer().references(WordLists, #id, onDelete: KeyAction.cascade)();
+
+  @override
+  String get tableName => 'learning_activity_lists';
+
+  @override
+  List<String> get customConstraints => ['UNIQUE(activity_id, list_id)'];
+}
+
+class LearningActivityWords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get activityId => integer().references(
+    LearningActivityRecords,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get wordId =>
+      integer().references(Words, #id, onDelete: KeyAction.cascade)();
+  IntColumn get usageCount => integer().withDefault(const Constant(0))();
+  IntColumn get errorCount => integer().withDefault(const Constant(0))();
+
+  @override
+  String get tableName => 'learning_activity_words';
+
+  @override
+  List<String> get customConstraints => ['UNIQUE(activity_id, word_id)'];
+}
+
 class TtsUsageRecords extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get provider => text()();
@@ -170,6 +232,24 @@ class TtsCacheRecords extends Table {
   List<String> get customConstraints => ['UNIQUE(provider, language, text)'];
 }
 
+abstract final class PracticeSessionKind {
+  static const memorization = 'memorization';
+  static const review = 'review';
+  static const aiLearning = 'ai_learning';
+}
+
+abstract final class LearningActivityType {
+  static const aiLearning = 'ai_learning';
+  static const dialogue = 'dialogue';
+  static const skill = 'skill';
+}
+
+abstract final class LearningActivityStatus {
+  static const started = 'started';
+  static const completed = 'completed';
+  static const abandoned = 'abandoned';
+}
+
 // ─── Row data classes ────────────────────────────────────────────────────────
 
 class WordListWithCount {
@@ -188,26 +268,176 @@ class ErrorWordWithCount {
 
 class ReviewWordStat {
   final Word word;
+  final int? cueMemoryListCreatedAt;
+  final int? cueMemoryListId;
+  final int? cueMemoryListSortOrder;
   final int errorCount;
   final int forgottenCount;
+  final int cueMemoryCount;
   final bool isErrorActive;
   final bool isForgottenActive;
+  final bool isCueMemoryActive;
 
   const ReviewWordStat({
     required this.word,
+    this.cueMemoryListCreatedAt,
+    this.cueMemoryListId,
+    this.cueMemoryListSortOrder,
     required this.errorCount,
     required this.forgottenCount,
+    required this.cueMemoryCount,
     required this.isErrorActive,
     required this.isForgottenActive,
+    required this.isCueMemoryActive,
   });
+}
+
+class DailyWordReview {
+  final Word word;
+  final int answerCount;
+  final int correctCount;
+  final int incorrectCount;
+  final bool? latestCorrect;
+  final int? latestAnsweredAt;
+
+  const DailyWordReview({
+    required this.word,
+    required this.answerCount,
+    required this.correctCount,
+    required this.incorrectCount,
+    required this.latestCorrect,
+    required this.latestAnsweredAt,
+  });
+
+  bool? get latestResult => latestCorrect;
+}
+
+class DailyListReview {
+  final WordList list;
+  final int practiceCount;
+  final int coveredWordCount;
+  final int totalWordCount;
+  final int correctCount;
+  final int totalAnswerCount;
+  final double accuracy;
+  final PracticeSession? latestSession;
+  final bool metPassThreshold;
+  final List<DailyWordReview> words;
+
+  const DailyListReview({
+    required this.list,
+    required this.practiceCount,
+    required this.coveredWordCount,
+    required this.totalWordCount,
+    required this.correctCount,
+    required this.totalAnswerCount,
+    required this.accuracy,
+    required this.latestSession,
+    required this.metPassThreshold,
+    required this.words,
+  });
+
+  double get weightedAccuracy => accuracy;
+  PracticeSession? get recentResult => latestSession;
+  bool get passed => metPassThreshold;
+}
+
+class ActivityWordAggregate {
+  final Word word;
+  final int usageCount;
+  final int errorCount;
+
+  const ActivityWordAggregate({
+    required this.word,
+    required this.usageCount,
+    required this.errorCount,
+  });
+}
+
+class DailyAiSummary {
+  final List<LearningActivityRecord> activities;
+  final List<ActivityWordAggregate> focusWords;
+
+  const DailyAiSummary({required this.activities, required this.focusWords});
+
+  List<LearningActivityRecord> ofType(String type) =>
+      activities.where((activity) => activity.activityType == type).toList();
+
+  int completedCount(String type) => ofType(type).length;
+
+  int involvedWordCount(String type) => ofType(
+    type,
+  ).fold<int>(0, (sum, activity) => sum + activity.involvedWordCount);
+
+  int get aiLearningQuestionCount => ofType(
+    LearningActivityType.aiLearning,
+  ).fold<int>(0, (sum, activity) => sum + activity.questionCount);
+
+  int get aiLearningCorrectCount => ofType(
+    LearningActivityType.aiLearning,
+  ).fold<int>(0, (sum, activity) => sum + activity.correctCount);
+
+  double get aiLearningAccuracy => aiLearningQuestionCount == 0
+      ? 0
+      : aiLearningCorrectCount / aiLearningQuestionCount;
+
+  Map<String, int> get aiLearningModes =>
+      _subtypeCounts(LearningActivityType.aiLearning);
+
+  int get dialogueTurnCount => ofType(
+    LearningActivityType.dialogue,
+  ).fold<int>(0, (sum, activity) => sum + activity.turnCount);
+
+  int get dialogueTargetWordUseCount => ofType(
+    LearningActivityType.dialogue,
+  ).fold<int>(0, (sum, activity) => sum + activity.targetWordUseCount);
+
+  double? get dialogueNaturalnessAverage => _averageMetric(
+    ofType(
+      LearningActivityType.dialogue,
+    ).map((activity) => activity.naturalnessAverage),
+  );
+
+  double? get dialogueContextFitAverage => _averageMetric(
+    ofType(
+      LearningActivityType.dialogue,
+    ).map((activity) => activity.contextFitAverage),
+  );
+
+  int get skillRunCount => ofType(
+    LearningActivityType.skill,
+  ).fold<int>(0, (sum, activity) => sum + activity.skillRunCount);
+
+  Map<String, int> get skillDistribution =>
+      _subtypeCounts(LearningActivityType.skill);
+
+  Map<String, int> _subtypeCounts(String type) {
+    final counts = <String, int>{};
+    for (final activity in ofType(type)) {
+      final key = activity.subtype ?? '';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  double? _averageMetric(Iterable<double?> values) {
+    final present = values.whereType<double>().toList();
+    if (present.isEmpty) return null;
+    return present.reduce((a, b) => a + b) / present.length;
+  }
 }
 
 class _ReviewWordStatBuilder {
   final Word word;
+  int? cueMemoryListCreatedAt;
+  int? cueMemoryListId;
+  int? cueMemoryListSortOrder;
   int errorCount = 0;
   int forgottenCount = 0;
+  int cueMemoryCount = 0;
   bool isErrorActive = false;
   bool isForgottenActive = false;
+  bool isCueMemoryActive = false;
 
   _ReviewWordStatBuilder(this.word);
 }
@@ -242,6 +472,46 @@ class _ReviewForgottenRow {
   });
 }
 
+class _ReviewCueMemoryRow {
+  final int id;
+  final Word word;
+  final int listCreatedAt;
+  final int listId;
+  final int listSortOrder;
+  final int cueMemoryCount;
+  final bool isCueMemory;
+
+  _ReviewCueMemoryRow({
+    required this.id,
+    required this.word,
+    required this.listCreatedAt,
+    required this.listId,
+    required this.listSortOrder,
+    required this.cueMemoryCount,
+    required this.isCueMemory,
+  });
+}
+
+class _DailyWordBuilder {
+  final Word word;
+  int answerCount = 0;
+  int correctCount = 0;
+  int incorrectCount = 0;
+  bool? latestCorrect;
+  int? latestAnsweredAt;
+
+  _DailyWordBuilder(this.word);
+
+  DailyWordReview toStat() => DailyWordReview(
+    word: word,
+    answerCount: answerCount,
+    correctCount: correctCount,
+    incorrectCount: incorrectCount,
+    latestCorrect: latestCorrect,
+    latestAnsweredAt: latestAnsweredAt,
+  );
+}
+
 // ─── Database ────────────────────────────────────────────────────────────────
 
 @DriftDatabase(
@@ -255,6 +525,9 @@ class _ReviewForgottenRow {
     ErrorWords,
     AiContent,
     Settings,
+    LearningActivityRecords,
+    LearningActivityLists,
+    LearningActivityWords,
     TtsUsageRecords,
     TtsCacheRecords,
   ],
@@ -262,8 +535,11 @@ class _ReviewForgottenRow {
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  /// Creates an isolated database for repository tests.
+  AppDatabase.forTesting(super.executor);
+
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -292,6 +568,31 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(listWords, listWords.forgottenCount);
         await m.addColumn(errorWords, errorWords.isResolved);
       }
+      if (from < 7) {
+        await m.addColumn(practiceSessions, practiceSessions.sessionKind);
+        await m.createTable(learningActivityRecords);
+        await m.createTable(learningActivityLists);
+        await m.createTable(learningActivityWords);
+
+        // Intentionally reset legacy review/progress data. Drift wraps the
+        // whole version upgrade in one transaction, so a failure rolls back
+        // both the schema changes and this destructive cleanup.
+        await m.database.customStatement('DELETE FROM practice_answers');
+        await m.database.customStatement('DELETE FROM practice_sessions');
+        await m.database.customStatement('DELETE FROM error_words');
+        await m.database.customStatement(
+          'UPDATE list_words SET is_forgotten = 0, forgotten_count = 0',
+        );
+        await m.database.customStatement('UPDATE word_lists SET is_passed = 0');
+        await m.database.customStatement('''
+INSERT INTO settings (`key`, value) VALUES ('review_data_reset_notice', 'true')
+ON CONFLICT(`key`) DO UPDATE SET value = excluded.value
+''');
+      }
+      if (from < 8) {
+        await m.addColumn(listWords, listWords.isCueMemory);
+        await m.addColumn(listWords, listWords.cueMemoryCount);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -300,12 +601,6 @@ class AppDatabase extends _$AppDatabase {
 
   static QueryExecutor _openConnection() {
     return LazyDatabase(() async {
-      if (Platform.isAndroid || Platform.isIOS) {
-        final dbFolder = await getApplicationDocumentsDirectory();
-        final file = File(p.join(dbFolder.path, 'lingo.db'));
-        return NativeDatabase.createInBackground(file);
-      }
-      // Windows/macOS/Linux desktop: persist to file
       final dbFolder = await getLingoDataDir();
       final file = File(p.join(dbFolder.path, 'lingo.db'));
       return NativeDatabase.createInBackground(file);
@@ -549,6 +844,332 @@ class AppDatabase extends _$AppDatabase {
         .then((l) => l.length);
   }
 
+  Future<List<PracticeSession>> getMemorizationSessionsForList(int listId) {
+    final query = select(practiceSessions)
+      ..where(
+        (t) =>
+            t.listId.equals(listId) &
+            t.sessionKind.equals(PracticeSessionKind.memorization),
+      )
+      ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]);
+    return query.get();
+  }
+
+  // ─── Learning activities ────────────────────────────────────────────────
+
+  Future<int> startActivity({
+    required String activityType,
+    String? subtype,
+    List<int> listIds = const [],
+    List<int> wordIds = const [],
+    int? startedAt,
+  }) async {
+    return transaction(() async {
+      final id = await into(learningActivityRecords).insert(
+        LearningActivityRecordsCompanion(
+          activityType: Value(activityType),
+          subtype: Value.absentIfNull(subtype),
+          status: const Value(LearningActivityStatus.started),
+          startedAt: Value(startedAt ?? DateTime.now().millisecondsSinceEpoch),
+          involvedWordCount: Value(wordIds.toSet().length),
+        ),
+      );
+      for (final listId in listIds.toSet()) {
+        await into(learningActivityLists).insert(
+          LearningActivityListsCompanion(
+            activityId: Value(id),
+            listId: Value(listId),
+          ),
+        );
+      }
+      for (final wordId in wordIds.toSet()) {
+        await into(learningActivityWords).insert(
+          LearningActivityWordsCompanion(
+            activityId: Value(id),
+            wordId: Value(wordId),
+          ),
+        );
+      }
+      return id;
+    });
+  }
+
+  Future<void> completeActivity(
+    int activityId, {
+    String? subtype,
+    int? questionCount,
+    int? correctCount,
+    double? accuracy,
+    int? turnCount,
+    int? targetWordUseCount,
+    double? naturalnessAverage,
+    double? contextFitAverage,
+    int? skillRunCount,
+    int? involvedWordCount,
+    List<int> wordIds = const [],
+    List<int> errorWordIds = const [],
+    Map<int, int> wordUsageCounts = const {},
+    int? finishedAt,
+  }) async {
+    await transaction(() async {
+      final rows =
+          await (select(learningActivityRecords)..where(
+                (t) =>
+                    t.id.equals(activityId) &
+                    t.status.equals(LearningActivityStatus.started),
+              ))
+              .get();
+      if (rows.isEmpty) return;
+      final allWordIds = <int>{
+        ...wordIds,
+        ...wordUsageCounts.keys,
+        ...errorWordIds,
+      };
+      final existingWordRows = await (select(
+        learningActivityWords,
+      )..where((t) => t.activityId.equals(activityId))).get();
+      allWordIds.addAll(existingWordRows.map((row) => row.wordId));
+      await (update(
+        learningActivityRecords,
+      )..where((t) => t.id.equals(activityId))).write(
+        LearningActivityRecordsCompanion(
+          subtype: Value.absentIfNull(subtype),
+          status: const Value(LearningActivityStatus.completed),
+          finishedAt: Value(
+            finishedAt ?? DateTime.now().millisecondsSinceEpoch,
+          ),
+          questionCount: Value.absentIfNull(questionCount),
+          correctCount: Value.absentIfNull(correctCount),
+          accuracy: Value.absentIfNull(accuracy),
+          turnCount: Value.absentIfNull(turnCount),
+          targetWordUseCount: Value.absentIfNull(targetWordUseCount),
+          naturalnessAverage: Value.absentIfNull(naturalnessAverage),
+          contextFitAverage: Value.absentIfNull(contextFitAverage),
+          skillRunCount: Value.absentIfNull(skillRunCount),
+          involvedWordCount: Value.absentIfNull(
+            involvedWordCount ?? allWordIds.length,
+          ),
+        ),
+      );
+      for (final wordId in allWordIds) {
+        final existing =
+            await (select(learningActivityWords)..where(
+                  (t) =>
+                      t.activityId.equals(activityId) & t.wordId.equals(wordId),
+                ))
+                .getSingleOrNull();
+        final usage = wordUsageCounts[wordId] ?? 0;
+        final errors = errorWordIds.contains(wordId) ? 1 : 0;
+        if (existing == null) {
+          await into(learningActivityWords).insert(
+            LearningActivityWordsCompanion(
+              activityId: Value(activityId),
+              wordId: Value(wordId),
+              usageCount: Value(usage),
+              errorCount: Value(errors),
+            ),
+          );
+        } else {
+          await (update(
+            learningActivityWords,
+          )..where((t) => t.id.equals(existing.id))).write(
+            LearningActivityWordsCompanion(
+              usageCount: Value(usage),
+              errorCount: Value(errors),
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> abandonActivity(int activityId, {int? finishedAt}) async {
+    await (update(learningActivityRecords)..where(
+          (t) =>
+              t.id.equals(activityId) &
+              t.status.equals(LearningActivityStatus.started),
+        ))
+        .write(
+          LearningActivityRecordsCompanion(
+            status: const Value(LearningActivityStatus.abandoned),
+            finishedAt: Value(
+              finishedAt ?? DateTime.now().millisecondsSinceEpoch,
+            ),
+          ),
+        );
+  }
+
+  Future<LearningActivityRecord?> getActivity(int id) => (select(
+    learningActivityRecords,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Future<List<LearningActivityRecord>> getActivitiesForDay(
+    DateTime day, {
+    int? bookId,
+    List<int>? listIds,
+    bool completedOnly = true,
+  }) async {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final records =
+        await (select(learningActivityRecords)
+              ..where((t) {
+                final finished = t.finishedAt;
+                final dateFilter =
+                    finished.isBiggerOrEqualValue(
+                      start.millisecondsSinceEpoch,
+                    ) &
+                    finished.isSmallerThanValue(end.millisecondsSinceEpoch);
+                return (completedOnly
+                        ? t.status.equals(LearningActivityStatus.completed)
+                        : const Constant(true)) &
+                    dateFilter;
+              })
+              ..orderBy([(t) => OrderingTerm.asc(t.finishedAt)]))
+            .get();
+    if (records.isEmpty ||
+        (bookId == null && (listIds == null || listIds.isEmpty))) {
+      return records;
+    }
+    final allowedLists = <int>{...?listIds};
+    if (bookId != null) {
+      final bookLists = await (select(
+        wordLists,
+      )..where((t) => t.bookId.equals(bookId))).get();
+      allowedLists.addAll(bookLists.map((list) => list.id));
+    }
+    if (allowedLists.isEmpty) return const [];
+    final links = await (select(
+      learningActivityLists,
+    )..where((t) => t.listId.isIn(allowedLists))).get();
+    final linkedIds = links.map((link) => link.activityId).toSet();
+    return records.where((record) => linkedIds.contains(record.id)).toList();
+  }
+
+  Future<List<DailyListReview>> getDailyListReview(
+    DateTime day, {
+    int? bookId,
+  }) async {
+    final lists = await getAllLists();
+    final filtered = bookId == null
+        ? lists
+        : lists.where((list) => list.bookId == bookId).toList();
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final sessions =
+        await (select(practiceSessions)..where(
+              (t) =>
+                  t.sessionKind.equals(PracticeSessionKind.memorization) &
+                  t.finishedAt.isBiggerOrEqualValue(
+                    start.millisecondsSinceEpoch,
+                  ) &
+                  t.finishedAt.isSmallerThanValue(end.millisecondsSinceEpoch),
+            ))
+            .get();
+    final answers = await select(practiceAnswers).get();
+    final answersBySession = <int, List<PracticeAnswer>>{};
+    for (final answer in answers) {
+      answersBySession.putIfAbsent(answer.sessionId, () => []).add(answer);
+    }
+    final result = <DailyListReview>[];
+    for (final list in filtered) {
+      final listSessions = sessions.where((s) => s.listId == list.id).toList();
+      listSessions.sort(
+        (a, b) => (b.finishedAt ?? b.startedAt).compareTo(
+          a.finishedAt ?? a.startedAt,
+        ),
+      );
+      final listWords = await getWordsForList(list.id);
+      final wordMap = <int, _DailyWordBuilder>{};
+      for (final word in listWords) {
+        wordMap[word.id] = _DailyWordBuilder(word);
+      }
+      var correct = 0;
+      var total = 0;
+      for (final session in listSessions) {
+        for (final answer in answersBySession[session.id] ?? const []) {
+          final builder = wordMap[answer.wordId];
+          if (builder == null) continue;
+          builder.answerCount++;
+          if (answer.isCorrect) {
+            correct++;
+            builder.correctCount++;
+          } else {
+            builder.incorrectCount++;
+          }
+          total++;
+          if (builder.latestAnsweredAt == null ||
+              answer.answeredAt > builder.latestAnsweredAt!) {
+            builder.latestAnsweredAt = answer.answeredAt;
+            builder.latestCorrect = answer.isCorrect;
+          }
+        }
+      }
+      final dailyWords =
+          wordMap.values
+              .where((builder) => builder.answerCount > 0)
+              .map((builder) => builder.toStat())
+              .toList()
+            ..sort((a, b) => a.word.english.compareTo(b.word.english));
+      result.add(
+        DailyListReview(
+          list: list,
+          practiceCount: listSessions.length,
+          coveredWordCount: dailyWords.length,
+          totalWordCount: list.wordCount,
+          correctCount: correct,
+          totalAnswerCount: total,
+          accuracy: total == 0 ? 0 : correct / total,
+          latestSession: listSessions.isEmpty ? null : listSessions.first,
+          metPassThreshold: total > 0 && correct / total >= list.passThreshold,
+          words: dailyWords,
+        ),
+      );
+    }
+    return result;
+  }
+
+  Future<DailyAiSummary> getDailyAiSummary(DateTime day, {int? bookId}) async {
+    final activities = await getActivitiesForDay(day, bookId: bookId);
+    if (activities.isEmpty) {
+      return const DailyAiSummary(activities: [], focusWords: []);
+    }
+    final ids = activities.map((activity) => activity.id).toSet();
+    final wordRows = await (select(
+      learningActivityWords,
+    )..where((t) => t.activityId.isIn(ids))).get();
+    final aggregates = <int, (int usage, int errors)>{};
+    for (final row in wordRows) {
+      if (row.usageCount == 0 && row.errorCount == 0) continue;
+      final current = aggregates[row.wordId] ?? (0, 0);
+      aggregates[row.wordId] = (
+        current.$1 + row.usageCount,
+        current.$2 + row.errorCount,
+      );
+    }
+    final words = await getAllWords();
+    final focusWords = <ActivityWordAggregate>[];
+    for (final entry in aggregates.entries) {
+      final word = words
+          .where((candidate) => candidate.id == entry.key)
+          .firstOrNull;
+      if (word == null) continue;
+      focusWords.add(
+        ActivityWordAggregate(
+          word: word,
+          usageCount: entry.value.$1,
+          errorCount: entry.value.$2,
+        ),
+      );
+    }
+    focusWords.sort((a, b) {
+      final errorCmp = b.errorCount.compareTo(a.errorCount);
+      if (errorCmp != 0) return errorCmp;
+      return b.usageCount.compareTo(a.usageCount);
+    });
+    return DailyAiSummary(activities: activities, focusWords: focusWords);
+  }
+
   // ─── Forgotten Words ──────────────────────────────────────────────────────
 
   Future<void> markWordForgotten(int wordId, int listId) async {
@@ -562,7 +1183,9 @@ class AppDatabase extends _$AppDatabase {
     )..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId))).write(
       ListWordsCompanion(
         isForgotten: const Value(true),
-        forgottenCount: Value(existing.forgottenCount + 1),
+        forgottenCount: Value(
+          existing.forgottenCount + (existing.isForgotten ? 0 : 1),
+        ),
       ),
     );
   }
@@ -581,6 +1204,36 @@ class AppDatabase extends _$AppDatabase {
     await (update(listWords)
           ..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId)))
         .write(const ListWordsCompanion(isForgotten: Value(false)));
+  }
+
+  // ─── Cue Memory Words ────────────────────────────────────────────────────
+
+  Future<void> markWordCueMemory(int wordId, int listId) async {
+    final existing =
+        await (select(listWords)
+              ..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId)))
+            .getSingleOrNull();
+    if (existing == null) return;
+    await (update(
+      listWords,
+    )..where((t) => t.wordId.equals(wordId) & t.listId.equals(listId))).write(
+      ListWordsCompanion(
+        isCueMemory: const Value(true),
+        cueMemoryCount: Value(
+          existing.cueMemoryCount + (existing.isCueMemory ? 0 : 1),
+        ),
+      ),
+    );
+  }
+
+  Future<List<Word>> getCueMemoryWordsForList(int listId) {
+    final query =
+        select(
+          listWords,
+        ).join([innerJoin(words, words.id.equalsExp(listWords.wordId))])..where(
+          listWords.listId.equals(listId) & listWords.isCueMemory.equals(true),
+        );
+    return query.map((row) => row.readTable(words)).get();
   }
 
   // ─── Error Words ─────────────────────────────────────────────────────────
@@ -644,6 +1297,7 @@ class AppDatabase extends _$AppDatabase {
   Future<List<ReviewWordStat>> getReviewWordStats({int? bookId}) async {
     final errorRows = await _selectReviewErrorRows(bookId: bookId);
     final forgottenRows = await _selectReviewForgottenRows(bookId: bookId);
+    final cueMemoryRows = await _selectReviewCueMemoryRows(bookId: bookId);
 
     final statsByWordId = <int, _ReviewWordStatBuilder>{};
 
@@ -665,14 +1319,40 @@ class AppDatabase extends _$AppDatabase {
       builder.isForgottenActive = builder.isForgottenActive || row.isForgotten;
     }
 
+    for (final row in cueMemoryRows) {
+      final builder = statsByWordId.putIfAbsent(
+        row.word.id,
+        () => _ReviewWordStatBuilder(row.word),
+      );
+      final shouldUsePosition =
+          builder.cueMemoryListCreatedAt == null ||
+          row.listCreatedAt < builder.cueMemoryListCreatedAt! ||
+          (row.listCreatedAt == builder.cueMemoryListCreatedAt &&
+              (row.listId < builder.cueMemoryListId! ||
+                  (row.listId == builder.cueMemoryListId &&
+                      row.listSortOrder < builder.cueMemoryListSortOrder!)));
+      if (shouldUsePosition) {
+        builder.cueMemoryListCreatedAt = row.listCreatedAt;
+        builder.cueMemoryListId = row.listId;
+        builder.cueMemoryListSortOrder = row.listSortOrder;
+      }
+      builder.cueMemoryCount += row.cueMemoryCount;
+      builder.isCueMemoryActive = builder.isCueMemoryActive || row.isCueMemory;
+    }
+
     final stats = statsByWordId.values
         .map(
           (builder) => ReviewWordStat(
             word: builder.word,
+            cueMemoryListCreatedAt: builder.cueMemoryListCreatedAt,
+            cueMemoryListId: builder.cueMemoryListId,
+            cueMemoryListSortOrder: builder.cueMemoryListSortOrder,
             errorCount: builder.errorCount,
             forgottenCount: builder.forgottenCount,
+            cueMemoryCount: builder.cueMemoryCount,
             isErrorActive: builder.isErrorActive,
             isForgottenActive: builder.isForgottenActive,
+            isCueMemoryActive: builder.isCueMemoryActive,
           ),
         )
         .toList();
@@ -725,6 +1405,34 @@ class AppDatabase extends _$AppDatabase {
         word: row.readTable(words),
         forgottenCount: listWord.forgottenCount,
         isForgotten: listWord.isForgotten,
+      );
+    }).get();
+  }
+
+  Future<List<_ReviewCueMemoryRow>> _selectReviewCueMemoryRows({
+    int? bookId,
+  }) async {
+    final query =
+        select(listWords).join([
+          innerJoin(words, words.id.equalsExp(listWords.wordId)),
+          innerJoin(wordLists, wordLists.id.equalsExp(listWords.listId)),
+        ])..where(
+          listWords.isCueMemory.equals(true) |
+              listWords.cueMemoryCount.isBiggerThanValue(0),
+        );
+    if (bookId != null) {
+      query.where(wordLists.bookId.equals(bookId));
+    }
+    return query.map((row) {
+      final listWord = row.readTable(listWords);
+      return _ReviewCueMemoryRow(
+        id: listWord.id,
+        word: row.readTable(words),
+        listCreatedAt: row.readTable(wordLists).createdAt,
+        listId: listWord.listId,
+        listSortOrder: listWord.sortOrder,
+        cueMemoryCount: listWord.cueMemoryCount,
+        isCueMemory: listWord.isCueMemory,
       );
     }).get();
   }
@@ -851,8 +1559,51 @@ class AppDatabase extends _$AppDatabase {
     return query.get();
   }
 
-  Future<void> upsertTtsCacheRecord(Insertable<TtsCacheRecord> record) async {
-    await into(ttsCacheRecords).insertOnConflictUpdate(record);
+  /// Upsert by the cache table's natural key rather than [id].
+  ///
+  /// [insertOnConflictUpdate] targets Drift's primary key (`id`), while this
+  /// table deliberately de-duplicates rows by `(provider, language, text)`.
+  /// Use SQLite's explicit conflict target so failed words can be retried and
+  /// their cache record updated without raising a unique-constraint error.
+  Future<void> upsertTtsCacheRecord({
+    required String provider,
+    required String language,
+    required String text,
+    required String cacheKey,
+    required String status,
+    String? cachePath,
+    String? errorMessage,
+    int? audioBytes,
+    int? chargedCharacters,
+  }) {
+    return customStatement(
+      '''
+INSERT INTO tts_cache_records (
+  provider, language, text, cache_key, status, cache_path, error_message,
+  audio_bytes, charged_characters, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(provider, language, text) DO UPDATE SET
+  cache_key = excluded.cache_key,
+  status = excluded.status,
+  cache_path = excluded.cache_path,
+  error_message = excluded.error_message,
+  audio_bytes = excluded.audio_bytes,
+  charged_characters = excluded.charged_characters,
+  updated_at = excluded.updated_at
+''',
+      [
+        provider,
+        language,
+        text,
+        cacheKey,
+        status,
+        cachePath,
+        errorMessage,
+        audioBytes,
+        chargedCharacters,
+        DateTime.now().millisecondsSinceEpoch,
+      ],
+    );
   }
 
   Future<void> deleteTtsCacheRecord(int id) async {

@@ -1,0 +1,4 @@
+{
+  "sshTarget": "ubuntu@LIGHTHOUSE_IP_OR_HOST",
+  "baseUrl": "http://LIGHTHOUSE_IP_OR_HOST/audio"
+}

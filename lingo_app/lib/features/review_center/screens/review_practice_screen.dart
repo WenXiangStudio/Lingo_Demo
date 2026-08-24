@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:drift/drift.dart' show Value;
 
 import '../../../core/i18n/app_strings.dart';
 import '../../../core/utils/answer_checker.dart';
@@ -25,6 +26,8 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
   final _rng = Random();
   final Map<int, List<String>> _choiceOptionsCache = {};
   final List<_ReviewAnswerRecord> _answers = [];
+  List<String> _choiceDistractorMeanings = const [];
+  bool _isLoadingDistractors = true;
 
   int _currentIndex = 0;
   bool _showFeedback = false;
@@ -35,6 +38,7 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
   double _accuracy = 0;
   bool _passed = false;
   bool _savedOnce = false;
+  final int _startedAt = DateTime.now().millisecondsSinceEpoch;
 
   @override
   void dispose() {
@@ -44,6 +48,12 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadChoiceDistractors();
+  }
+
   ReviewPracticeSession? get _session =>
       ref.read(reviewPracticeSessionProvider);
 
@@ -51,6 +61,35 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
 
   ReviewWordStat? get _currentWord =>
       _currentIndex < _words.length ? _words[_currentIndex] : null;
+
+  Future<void> _loadChoiceDistractors() async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      final listRepo = ref.read(wordListRepositoryProvider);
+      final allWords = session.bookId == null
+          ? await listRepo.getWordsForLists(
+              (await listRepo.getAllLists()).map((list) => list.id).toList(),
+            )
+          : await listRepo.getWordsForLists(
+              (await listRepo.getListsForBook(
+                session.bookId!,
+              )).map((list) => list.id).toList(),
+            );
+      if (!mounted) return;
+      setState(() {
+        _choiceDistractorMeanings = allWords
+            .map((word) => word.chineseMeanings)
+            .toSet()
+            .toList();
+        _isLoadingDistractors = false;
+        _choiceOptionsCache.clear();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingDistractors = false);
+    }
+  }
 
   Future<double> _passThreshold() async {
     return ref.read(settingsRepositoryProvider).getPassThreshold();
@@ -63,8 +102,7 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
     final correctKey = AnswerChecker.normalizeMeaningKey(correct);
     final distractors = <String>[];
     final used = <String>{correctKey};
-    final candidates = _words.map((w) => w.word.chineseMeanings).toList()
-      ..shuffle(_rng);
+    final candidates = _choiceDistractorMeanings.toList()..shuffle(_rng);
 
     for (final meaning in candidates) {
       final key = AnswerChecker.normalizeMeaningKey(meaning);
@@ -72,10 +110,6 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
       used.add(key);
       distractors.add(meaning);
       if (distractors.length >= 4) break;
-    }
-
-    while (distractors.length < 4) {
-      distractors.add('___${distractors.length + 1}___');
     }
 
     final options = [correct, ...distractors]..shuffle(_rng);
@@ -152,17 +186,78 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
         : _answers.where((a) => a.isCorrect).length / _answers.length;
     _passed = _accuracy >= threshold;
 
+    // Keep review drills in practice_sessions, but mark them separately so
+    // List memorization statistics only count ordinary memorization sessions.
+    final db = ref.read(appDatabaseProvider);
+    final answerWordIds = _answers
+        .map((answer) => answer.wordId)
+        .toSet()
+        .toList();
+    final affectedListIds = await db.getListIdsContainingWordsInScope(
+      answerWordIds,
+      bookId: session.bookId,
+    );
+    for (final listId in affectedListIds) {
+      final listWordIds = (await db.getWordsForList(
+        listId,
+      )).map((word) => word.id).toSet();
+      final records = _answers
+          .where((answer) => listWordIds.contains(answer.wordId))
+          .toList();
+      if (records.isEmpty) continue;
+      final correct = records.where((answer) => answer.isCorrect).length;
+      final sessionId = await db.insertSession(
+        PracticeSessionsCompanion(
+          listId: Value(listId),
+          mode: Value(session.mode.name),
+          sessionKind: const Value(PracticeSessionKind.review),
+          totalCount: Value(records.length),
+          correctCount: Value(correct),
+          accuracy: Value(correct / records.length),
+          startedAt: Value(_startedAt),
+          finishedAt: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
+      await db.insertAnswers(
+        records
+            .map(
+              (answer) => PracticeAnswersCompanion(
+                sessionId: Value(sessionId),
+                wordId: Value(answer.wordId),
+                isCorrect: Value(answer.isCorrect),
+                correctAnswer: Value(
+                  session.words
+                      .firstWhere((word) => word.word.id == answer.wordId)
+                      .word
+                      .chineseMeanings,
+                ),
+                answeredAt: Value(DateTime.now().millisecondsSinceEpoch),
+              ),
+            )
+            .toList(),
+      );
+    }
+
     setState(() => _isSaving = true);
 
-    if (_passed && correctIds.isNotEmpty) {
+    if (_passed &&
+        correctIds.isNotEmpty &&
+        session.collectionType != ReviewCollectionType.cueMemory) {
       final db = ref.read(appDatabaseProvider);
-      if (session.collectionType == ReviewCollectionType.errors) {
-        await db.resolveErrorWords(correctIds, bookId: session.bookId);
-      } else {
-        await db.clearForgottenStatusForWordsInScope(
-          correctIds,
-          bookId: session.bookId,
-        );
+      switch (session.collectionType) {
+        case ReviewCollectionType.errors:
+          await db.resolveErrorWords(correctIds, bookId: session.bookId);
+          break;
+        case ReviewCollectionType.forgotten:
+          await db.clearForgottenStatusForWordsInScope(
+            correctIds,
+            bookId: session.bookId,
+          );
+          break;
+        case ReviewCollectionType.cueMemory:
+          throw StateError('Cue-memory words are read-only.');
+      }
+      if (session.collectionType != ReviewCollectionType.errors) {
         final affectedListIds = await db.getListIdsContainingWordsInScope(
           correctIds,
           bookId: session.bookId,
@@ -171,6 +266,7 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
           ref.invalidate(listWordsProvider(listId));
           ref.invalidate(forgottenWordIdsProvider(listId));
           ref.invalidate(forgottenWordsProvider(listId));
+          ref.invalidate(cueMemoryWordIdsProvider(listId));
           ref.invalidate(listDetailProvider(listId));
         }
       }
@@ -210,30 +306,38 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
 
     if (_finished) {
       final passed = _passed;
-      final title = session.collectionType == ReviewCollectionType.errors
-          ? AppStrings.get('error_collection', lang)
-          : AppStrings.get('forgotten_collection', lang);
-      final clearedText = session.collectionType == ReviewCollectionType.errors
-          ? AppStrings.get(
-              'review_error_cleared_n',
-              lang,
-              params: {'count': _clearedCount.toString()},
-            )
-          : (_clearedCount > 0
+      final title = switch (session.collectionType) {
+        ReviewCollectionType.errors => AppStrings.get('error_collection', lang),
+        ReviewCollectionType.forgotten => AppStrings.get(
+          'forgotten_collection',
+          lang,
+        ),
+        ReviewCollectionType.cueMemory => AppStrings.get(
+          'cue_memory_collection',
+          lang,
+        ),
+      };
+      final clearedText = switch (session.collectionType) {
+        ReviewCollectionType.errors => AppStrings.get(
+          'review_error_cleared_n',
+          lang,
+          params: {'count': _clearedCount.toString()},
+        ),
+        ReviewCollectionType.forgotten =>
+          _clearedCount > 0
               ? AppStrings.get(
                   'forgotten_cleared_n',
                   lang,
                   params: {'count': _clearedCount.toString()},
                 )
-              : AppStrings.get('forgotten_not_cleared', lang));
+              : AppStrings.get('forgotten_not_cleared', lang),
+        ReviewCollectionType.cueMemory => '',
+      };
 
       return Scaffold(
         appBar: AppBar(
           title: Text(AppStrings.get('review_practice_result', lang)),
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: _leave,
-          ),
+          leading: IconButton(icon: const Icon(Icons.close), onPressed: _leave),
         ),
         body: ListView(
           padding: const EdgeInsets.all(24),
@@ -278,11 +382,7 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Center(
-              child: Chip(
-                label: Text(title),
-              ),
-            ),
+            Center(child: Chip(label: Text(title))),
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -330,10 +430,7 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('${_currentIndex + 1} / ${_words.length}'),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: _leave,
-        ),
+        leading: IconButton(icon: const Icon(Icons.close), onPressed: _leave),
       ),
       body: Column(
         children: [
@@ -375,7 +472,12 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  if (isChoice)
+                  if (isChoice && _isLoadingDistractors)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: CircularProgressIndicator(),
+                    )
+                  else if (isChoice)
                     ..._choiceOptionsFor(_currentIndex).map(
                       (option) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
@@ -443,10 +545,25 @@ class _ReviewPracticeScreenState extends ConsumerState<ReviewPracticeScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      _lastAnswerCorrect == true
-                          ? AppStrings.get('correct', lang)
-                          : AppStrings.get('incorrect', lang),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _lastAnswerCorrect == true
+                              ? AppStrings.get('correct', lang)
+                              : AppStrings.get('incorrect', lang),
+                        ),
+                        if (!isChoice) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '${AppStrings.get('correct_answer_label', lang)} ${word.word.chineseMeanings}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   FilledButton(
@@ -466,8 +583,5 @@ class _ReviewAnswerRecord {
   final int wordId;
   final bool isCorrect;
 
-  const _ReviewAnswerRecord({
-    required this.wordId,
-    required this.isCorrect,
-  });
+  const _ReviewAnswerRecord({required this.wordId, required this.isCorrect});
 }

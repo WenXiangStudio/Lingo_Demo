@@ -19,12 +19,14 @@ class AnswerRecord {
   final String? userAnswer;
   final String correctAnswer;
   final bool isCorrect;
+  final bool usedExampleCue;
 
   const AnswerRecord({
     required this.wordId,
     this.userAnswer,
     required this.correctAnswer,
     required this.isCorrect,
+    this.usedExampleCue = false,
   });
 }
 
@@ -34,6 +36,7 @@ class PracticeState {
   final int? listId;
   final bool onlyForgotten;
   final bool onlyErrors;
+  final bool trackExampleReveals;
   final List<Word> words;
   final List<Word> choiceDistractorPool;
   final Set<String> blockedChoiceMeanings;
@@ -46,6 +49,7 @@ class PracticeState {
   final String? saveError;
   final int? startedAt;
   final int clearedForgottenCount;
+  final Set<int> revealedExampleWordIds;
 
   const PracticeState({
     this.phase = PracticePhase.setup,
@@ -53,6 +57,7 @@ class PracticeState {
     this.listId,
     this.onlyForgotten = false,
     this.onlyErrors = false,
+    this.trackExampleReveals = false,
     this.words = const [],
     this.choiceDistractorPool = const [],
     this.blockedChoiceMeanings = const {},
@@ -65,6 +70,7 @@ class PracticeState {
     this.saveError,
     this.startedAt,
     this.clearedForgottenCount = 0,
+    this.revealedExampleWordIds = const {},
   });
 
   PracticeState copyWith({
@@ -73,6 +79,7 @@ class PracticeState {
     int? listId,
     bool? onlyForgotten,
     bool? onlyErrors,
+    bool? trackExampleReveals,
     List<Word>? words,
     List<Word>? choiceDistractorPool,
     Set<String>? blockedChoiceMeanings,
@@ -85,6 +92,7 @@ class PracticeState {
     String? saveError,
     int? startedAt,
     int? clearedForgottenCount,
+    Set<int>? revealedExampleWordIds,
     bool clearOptions = false,
     bool clearLastAnswer = false,
     bool clearSaveError = false,
@@ -95,6 +103,7 @@ class PracticeState {
       listId: listId ?? this.listId,
       onlyForgotten: onlyForgotten ?? this.onlyForgotten,
       onlyErrors: onlyErrors ?? this.onlyErrors,
+      trackExampleReveals: trackExampleReveals ?? this.trackExampleReveals,
       words: words ?? this.words,
       choiceDistractorPool: choiceDistractorPool ?? this.choiceDistractorPool,
       blockedChoiceMeanings:
@@ -113,6 +122,8 @@ class PracticeState {
       startedAt: startedAt ?? this.startedAt,
       clearedForgottenCount:
           clearedForgottenCount ?? this.clearedForgottenCount,
+      revealedExampleWordIds:
+          revealedExampleWordIds ?? this.revealedExampleWordIds,
     );
   }
 
@@ -144,9 +155,9 @@ final practiceProvider = StateNotifierProvider<PracticeNotifier, PracticeState>(
 
 final errorWordsWithCountProvider =
     FutureProvider.family<List<ErrorWordWithCount>, int>((ref, listId) async {
-  final repo = ref.read(practiceRepositoryProvider);
-  return repo.getErrorWordsWithCounts(listId);
-});
+      final repo = ref.read(practiceRepositoryProvider);
+      return repo.getErrorWordsWithCounts(listId);
+    });
 
 class _ScoredDistractor {
   final String meaning;
@@ -184,6 +195,7 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
     int? wordCount,
     bool onlyForgotten = false,
     bool onlyErrors = false,
+    bool trackExampleReveals = false,
   }) async {
     final wordListRepo = _ref.read(wordListRepositoryProvider);
     final listWords = await wordListRepo.getWordsForList(listId);
@@ -215,6 +227,7 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       listId: listId,
       onlyForgotten: onlyForgotten,
       onlyErrors: onlyErrors,
+      trackExampleReveals: trackExampleReveals,
       words: words,
       choiceDistractorPool: choiceDistractorPool,
       blockedChoiceMeanings: blockedChoiceMeanings,
@@ -272,13 +285,6 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       distractors.add(s.meaning);
     }
 
-    while (distractors.length < 4) {
-      final filler = '___${distractors.length + 1}___';
-      if (!distractors.contains(filler)) {
-        distractors.add(filler);
-      }
-    }
-
     final options = [correct, ...distractors];
     options.shuffle(_rng);
     return options;
@@ -328,8 +334,27 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
           userAnswer: trimmed.isEmpty ? null : trimmed,
           correctAnswer: word.chineseMeanings,
           isCorrect: isCorrect,
+          usedExampleCue:
+              state.trackExampleReveals &&
+              state.mode == PracticeMode.fill &&
+              state.revealedExampleWordIds.contains(word.id),
         ),
       ],
+    );
+  }
+
+  void revealCurrentExample() {
+    if (state.phase != PracticePhase.quiz ||
+        !state.trackExampleReveals ||
+        state.mode != PracticeMode.fill) {
+      return;
+    }
+    final wordId = state.currentWord?.id;
+    if (wordId == null || state.revealedExampleWordIds.contains(wordId)) {
+      return;
+    }
+    state = state.copyWith(
+      revealedExampleWordIds: {...state.revealedExampleWordIds, wordId},
     );
   }
 
@@ -421,6 +446,9 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       final newSessionId = await practiceRepo.createSession(
         listId: snapshot.listId!,
         mode: snapshot.mode!.name,
+        sessionKind: snapshot.onlyForgotten || snapshot.onlyErrors
+            ? PracticeSessionKind.review
+            : PracticeSessionKind.memorization,
         totalCount: snapshot.totalQuestions,
         correctCount: snapshot.correctCount,
         accuracy: accuracy,
@@ -441,6 +469,14 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       }).toList();
 
       await practiceRepo.recordAnswers(answerCompanions);
+
+      // A revealed example sentence is an explicit memory cue. Persist a
+      // correct response as cue memory so it can be reviewed later.
+      for (final a in snapshot.answers) {
+        if (a.usedExampleCue && a.isCorrect) {
+          await practiceRepo.markWordCueMemory(a.wordId, snapshot.listId!);
+        }
+      }
 
       // Record error words
       for (final a in snapshot.answers) {
@@ -488,6 +524,7 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       _ref.invalidate(listWordsProvider(snapshot.listId!));
       _ref.invalidate(forgottenWordIdsProvider(snapshot.listId!));
       _ref.invalidate(forgottenWordsProvider(snapshot.listId!));
+      _ref.invalidate(cueMemoryWordIdsProvider(snapshot.listId!));
       _ref.invalidate(errorWordsWithCountProvider(snapshot.listId!));
       _ref.invalidate(reviewCenterDataProvider);
 

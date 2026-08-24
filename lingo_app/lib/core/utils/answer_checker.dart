@@ -7,19 +7,29 @@ class AnswerChecker {
     r'^(?:[a-z]+(?:&[a-z]+)*\.?[\s·,，、:：/-]*)+',
     caseSensitive: false,
   );
+  static final RegExp _regionalMeaningPrefixPattern = RegExp(
+    r'^(?:(?:\(|（|\[|【)\s*(?:英|美)\s*(?:\)|）|\]|】)\s*)+',
+  );
 
   static String normalizeMeaningKey(String value) {
-    final normalized = TextNormalizer.normalizeQuotes(value)
-        .replaceAll('；', ';')
-        .replaceAll(RegExp(r'\s+'), '')
-        .trim()
-        .toLowerCase();
+    final normalized = TextNormalizer.normalizeQuotes(
+      value,
+    ).replaceAll('；', ';').replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
     return _stripMeaningPrefix(normalized);
   }
 
   static String _stripMeaningPrefix(String value) {
     var result = value;
     while (true) {
+      final regionalMatch = _regionalMeaningPrefixPattern.firstMatch(result);
+      if (regionalMatch != null && regionalMatch.end > 0) {
+        final stripped = result.substring(regionalMatch.end);
+        if (stripped.isNotEmpty && _looksLikeMeaningText(stripped)) {
+          result = stripped;
+          continue;
+        }
+      }
+
       final match = _meaningPrefixPattern.firstMatch(result);
       if (match == null || match.end == 0) break;
       final stripped = result.substring(match.end);
@@ -34,11 +44,21 @@ class AnswerChecker {
     return value.runes.first > 0x7f;
   }
 
-  /// Parse stored Chinese meanings into a list of individual meanings.
-  /// e.g. "n.苹果；v.挑选" → ["n.苹果", "v.挑选"]
+  /// Parse stored Chinese meanings into independently acceptable meanings.
+  /// e.g. "停止，放弃；离开，辞" → ["停止", "放弃", "离开", "辞"]
   static List<String> parseMeanings(String chineseMeanings) {
-    return TextNormalizer.normalizeQuotes(chineseMeanings)
-        .split(RegExp(r'[；;]'))
+    return _splitMeaningParts(chineseMeanings);
+  }
+
+  /// Parse a learner's fill-in answer using the same separators as stored
+  /// meanings. Each part must be an independently acceptable meaning.
+  static List<String> parseFillAnswerParts(String userInput) {
+    return _splitMeaningParts(userInput);
+  }
+
+  static List<String> _splitMeaningParts(String value) {
+    return TextNormalizer.normalizeQuotes(value)
+        .split(RegExp(r'[；;，,]'))
         .map((m) => m.trim())
         .where((m) => m.isNotEmpty)
         .toList();
@@ -58,15 +78,42 @@ class AnswerChecker {
   }
 
   /// Shared fill-in grading rule.
-  /// Any single correct Chinese meaning should count as correct.
+  /// A single correct Chinese meaning passes. When the learner enters several
+  /// meanings separated by commas or semicolons, every entered meaning must be
+  /// one of the stored meanings; ordering does not matter.
   static bool isFillAnswerCorrect(String userInput, String correctMeanings) {
-    return isAnswerCorrect(userInput, correctMeanings);
+    final answerParts = parseFillAnswerParts(userInput);
+    if (answerParts.isEmpty) return false;
+
+    final accepted = parseMeanings(
+      correctMeanings,
+    ).map(normalizeMeaningKey).where((meaning) => meaning.isNotEmpty).toSet();
+    return answerParts.every(
+      (part) => accepted.contains(normalizeMeaningKey(part)),
+    );
+  }
+
+  /// Return the learner-entered fill-in parts that do not match a stored
+  /// meaning. The UI uses these values to identify precisely what was wrong.
+  static List<String> invalidFillAnswerParts(
+    String userInput,
+    String correctMeanings,
+  ) {
+    final accepted = parseMeanings(
+      correctMeanings,
+    ).map(normalizeMeaningKey).where((meaning) => meaning.isNotEmpty).toSet();
+    return parseFillAnswerParts(
+      userInput,
+    ).where((part) => !accepted.contains(normalizeMeaningKey(part))).toList();
   }
 
   /// Compare whole answer strings after normalization.
   /// Use this for choice-style options where the displayed option text should
   /// match the stored answer as a complete unit.
-  static bool isChoiceAnswerCorrect(String selectedOption, String correctAnswer) {
+  static bool isChoiceAnswerCorrect(
+    String selectedOption,
+    String correctAnswer,
+  ) {
     final selected = normalizeMeaningKey(selectedOption);
     if (selected.isEmpty) return false;
     return selected == normalizeMeaningKey(correctAnswer);
@@ -78,12 +125,13 @@ class AnswerChecker {
     String correctMeanings,
   ) {
     final meanings = parseMeanings(correctMeanings);
-    final normalized = normalizeMeaningKey(userInput);
+    final entered = parseFillAnswerParts(
+      userInput,
+    ).map(normalizeMeaningKey).where((meaning) => meaning.isNotEmpty).toSet();
 
     return meanings.where((m) {
       final normalizedMeaning = normalizeMeaningKey(m);
-      return normalizedMeaning != normalized &&
-          !normalized.contains(normalizedMeaning);
+      return !entered.contains(normalizedMeaning);
     }).toList();
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/database/app_database.dart';
 import '../../data/providers.dart';
 import 'handlers/review_plan_skill_handler.dart';
 import 'handlers/word_story_skill_handler.dart';
@@ -84,6 +85,8 @@ class SkillRunController extends StateNotifier<SkillRunState> {
   Future<void> runSkill(String skillId, Map<String, Object?> inputs) async {
     if (state.phase == SkillRunPhase.running) return;
 
+    int? activityId;
+
     state = SkillRunState(
       phase: SkillRunPhase.running,
       runningSkillId: skillId,
@@ -91,6 +94,30 @@ class SkillRunController extends StateNotifier<SkillRunState> {
     );
 
     try {
+      final definition = _ref.read(skillRegistryProvider).getSkill(skillId);
+      final listIds = <int>[];
+      if (definition != null) {
+        for (final spec in definition.inputs) {
+          if (spec.type != SkillInputType.wordList) continue;
+          final value = inputs[spec.id];
+          if (value is int) listIds.add(value);
+        }
+      }
+      final words = <int>{};
+      final listRepo = _ref.read(wordListRepositoryProvider);
+      for (final listId in listIds) {
+        words.addAll(
+          (await listRepo.getWordsForList(listId)).map((word) => word.id),
+        );
+      }
+      activityId = await _ref
+          .read(learningActivityRepositoryProvider)
+          .startActivity(
+            activityType: LearningActivityType.skill,
+            subtype: skillId,
+            listIds: listIds,
+            wordIds: words.toList(),
+          );
       final runner = _ref.read(skillRunnerProvider);
       final result = await runner.run(
         skillId,
@@ -101,12 +128,26 @@ class SkillRunController extends StateNotifier<SkillRunState> {
         },
       );
       if (!mounted) return;
+      await _ref
+          .read(learningActivityRepositoryProvider)
+          .completeActivity(
+            activityId,
+            subtype: skillId,
+            skillRunCount: 1,
+            involvedWordCount: words.length,
+            wordIds: words.toList(),
+          );
       state = SkillRunState(
         phase: SkillRunPhase.complete,
         runningSkillId: skillId,
         result: result,
       );
     } on SkillCancelledException {
+      if (activityId != null) {
+        await _ref
+            .read(learningActivityRepositoryProvider)
+            .abandonActivity(activityId);
+      }
       if (!mounted) return;
       state = const SkillRunState(
         phase: SkillRunPhase.cancelled,
@@ -114,6 +155,11 @@ class SkillRunController extends StateNotifier<SkillRunState> {
         errorKey: 'skill_run_cancelled',
       );
     } on SkillException catch (e) {
+      if (activityId != null) {
+        await _ref
+            .read(learningActivityRepositoryProvider)
+            .abandonActivity(activityId);
+      }
       if (!mounted) return;
       state = SkillRunState(
         phase: SkillRunPhase.error,
@@ -122,6 +168,11 @@ class SkillRunController extends StateNotifier<SkillRunState> {
         errorParams: e.params,
       );
     } catch (e) {
+      if (activityId != null) {
+        await _ref
+            .read(learningActivityRepositoryProvider)
+            .abandonActivity(activityId);
+      }
       if (!mounted) return;
       state = SkillRunState(
         phase: SkillRunPhase.error,

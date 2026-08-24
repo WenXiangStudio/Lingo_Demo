@@ -1439,6 +1439,33 @@ class $ListWordsTable extends ListWords
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _isCueMemoryMeta = const VerificationMeta(
+    'isCueMemory',
+  );
+  @override
+  late final GeneratedColumn<bool> isCueMemory = GeneratedColumn<bool>(
+    'is_cue_memory',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_cue_memory" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _cueMemoryCountMeta = const VerificationMeta(
+    'cueMemoryCount',
+  );
+  @override
+  late final GeneratedColumn<int> cueMemoryCount = GeneratedColumn<int>(
+    'cue_memory_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1447,6 +1474,8 @@ class $ListWordsTable extends ListWords
     sortOrder,
     isForgotten,
     forgottenCount,
+    isCueMemory,
+    cueMemoryCount,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1505,6 +1534,24 @@ class $ListWordsTable extends ListWords
         ),
       );
     }
+    if (data.containsKey('is_cue_memory')) {
+      context.handle(
+        _isCueMemoryMeta,
+        isCueMemory.isAcceptableOrUnknown(
+          data['is_cue_memory']!,
+          _isCueMemoryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cue_memory_count')) {
+      context.handle(
+        _cueMemoryCountMeta,
+        cueMemoryCount.isAcceptableOrUnknown(
+          data['cue_memory_count']!,
+          _cueMemoryCountMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1538,6 +1585,14 @@ class $ListWordsTable extends ListWords
         DriftSqlType.int,
         data['${effectivePrefix}forgotten_count'],
       )!,
+      isCueMemory: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_cue_memory'],
+      )!,
+      cueMemoryCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cue_memory_count'],
+      )!,
     );
   }
 
@@ -1554,6 +1609,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
   final int sortOrder;
   final bool isForgotten;
   final int forgottenCount;
+  final bool isCueMemory;
+  final int cueMemoryCount;
   const ListWord({
     required this.id,
     required this.listId,
@@ -1561,6 +1618,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
     required this.sortOrder,
     required this.isForgotten,
     required this.forgottenCount,
+    required this.isCueMemory,
+    required this.cueMemoryCount,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1571,6 +1630,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
     map['sort_order'] = Variable<int>(sortOrder);
     map['is_forgotten'] = Variable<bool>(isForgotten);
     map['forgotten_count'] = Variable<int>(forgottenCount);
+    map['is_cue_memory'] = Variable<bool>(isCueMemory);
+    map['cue_memory_count'] = Variable<int>(cueMemoryCount);
     return map;
   }
 
@@ -1582,6 +1643,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
       sortOrder: Value(sortOrder),
       isForgotten: Value(isForgotten),
       forgottenCount: Value(forgottenCount),
+      isCueMemory: Value(isCueMemory),
+      cueMemoryCount: Value(cueMemoryCount),
     );
   }
 
@@ -1597,6 +1660,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       isForgotten: serializer.fromJson<bool>(json['isForgotten']),
       forgottenCount: serializer.fromJson<int>(json['forgottenCount']),
+      isCueMemory: serializer.fromJson<bool>(json['isCueMemory']),
+      cueMemoryCount: serializer.fromJson<int>(json['cueMemoryCount']),
     );
   }
   @override
@@ -1609,6 +1674,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
       'sortOrder': serializer.toJson<int>(sortOrder),
       'isForgotten': serializer.toJson<bool>(isForgotten),
       'forgottenCount': serializer.toJson<int>(forgottenCount),
+      'isCueMemory': serializer.toJson<bool>(isCueMemory),
+      'cueMemoryCount': serializer.toJson<int>(cueMemoryCount),
     };
   }
 
@@ -1619,6 +1686,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
     int? sortOrder,
     bool? isForgotten,
     int? forgottenCount,
+    bool? isCueMemory,
+    int? cueMemoryCount,
   }) => ListWord(
     id: id ?? this.id,
     listId: listId ?? this.listId,
@@ -1626,6 +1695,8 @@ class ListWord extends DataClass implements Insertable<ListWord> {
     sortOrder: sortOrder ?? this.sortOrder,
     isForgotten: isForgotten ?? this.isForgotten,
     forgottenCount: forgottenCount ?? this.forgottenCount,
+    isCueMemory: isCueMemory ?? this.isCueMemory,
+    cueMemoryCount: cueMemoryCount ?? this.cueMemoryCount,
   );
   ListWord copyWithCompanion(ListWordsCompanion data) {
     return ListWord(
@@ -1639,6 +1710,12 @@ class ListWord extends DataClass implements Insertable<ListWord> {
       forgottenCount: data.forgottenCount.present
           ? data.forgottenCount.value
           : this.forgottenCount,
+      isCueMemory: data.isCueMemory.present
+          ? data.isCueMemory.value
+          : this.isCueMemory,
+      cueMemoryCount: data.cueMemoryCount.present
+          ? data.cueMemoryCount.value
+          : this.cueMemoryCount,
     );
   }
 
@@ -1650,14 +1727,24 @@ class ListWord extends DataClass implements Insertable<ListWord> {
           ..write('wordId: $wordId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('isForgotten: $isForgotten, ')
-          ..write('forgottenCount: $forgottenCount')
+          ..write('forgottenCount: $forgottenCount, ')
+          ..write('isCueMemory: $isCueMemory, ')
+          ..write('cueMemoryCount: $cueMemoryCount')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, listId, wordId, sortOrder, isForgotten, forgottenCount);
+  int get hashCode => Object.hash(
+    id,
+    listId,
+    wordId,
+    sortOrder,
+    isForgotten,
+    forgottenCount,
+    isCueMemory,
+    cueMemoryCount,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1667,7 +1754,9 @@ class ListWord extends DataClass implements Insertable<ListWord> {
           other.wordId == this.wordId &&
           other.sortOrder == this.sortOrder &&
           other.isForgotten == this.isForgotten &&
-          other.forgottenCount == this.forgottenCount);
+          other.forgottenCount == this.forgottenCount &&
+          other.isCueMemory == this.isCueMemory &&
+          other.cueMemoryCount == this.cueMemoryCount);
 }
 
 class ListWordsCompanion extends UpdateCompanion<ListWord> {
@@ -1677,6 +1766,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
   final Value<int> sortOrder;
   final Value<bool> isForgotten;
   final Value<int> forgottenCount;
+  final Value<bool> isCueMemory;
+  final Value<int> cueMemoryCount;
   const ListWordsCompanion({
     this.id = const Value.absent(),
     this.listId = const Value.absent(),
@@ -1684,6 +1775,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
     this.sortOrder = const Value.absent(),
     this.isForgotten = const Value.absent(),
     this.forgottenCount = const Value.absent(),
+    this.isCueMemory = const Value.absent(),
+    this.cueMemoryCount = const Value.absent(),
   });
   ListWordsCompanion.insert({
     this.id = const Value.absent(),
@@ -1692,6 +1785,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
     required int sortOrder,
     this.isForgotten = const Value.absent(),
     this.forgottenCount = const Value.absent(),
+    this.isCueMemory = const Value.absent(),
+    this.cueMemoryCount = const Value.absent(),
   }) : listId = Value(listId),
        wordId = Value(wordId),
        sortOrder = Value(sortOrder);
@@ -1702,6 +1797,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
     Expression<int>? sortOrder,
     Expression<bool>? isForgotten,
     Expression<int>? forgottenCount,
+    Expression<bool>? isCueMemory,
+    Expression<int>? cueMemoryCount,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1710,6 +1807,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
       if (sortOrder != null) 'sort_order': sortOrder,
       if (isForgotten != null) 'is_forgotten': isForgotten,
       if (forgottenCount != null) 'forgotten_count': forgottenCount,
+      if (isCueMemory != null) 'is_cue_memory': isCueMemory,
+      if (cueMemoryCount != null) 'cue_memory_count': cueMemoryCount,
     });
   }
 
@@ -1720,6 +1819,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
     Value<int>? sortOrder,
     Value<bool>? isForgotten,
     Value<int>? forgottenCount,
+    Value<bool>? isCueMemory,
+    Value<int>? cueMemoryCount,
   }) {
     return ListWordsCompanion(
       id: id ?? this.id,
@@ -1728,6 +1829,8 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
       sortOrder: sortOrder ?? this.sortOrder,
       isForgotten: isForgotten ?? this.isForgotten,
       forgottenCount: forgottenCount ?? this.forgottenCount,
+      isCueMemory: isCueMemory ?? this.isCueMemory,
+      cueMemoryCount: cueMemoryCount ?? this.cueMemoryCount,
     );
   }
 
@@ -1752,6 +1855,12 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
     if (forgottenCount.present) {
       map['forgotten_count'] = Variable<int>(forgottenCount.value);
     }
+    if (isCueMemory.present) {
+      map['is_cue_memory'] = Variable<bool>(isCueMemory.value);
+    }
+    if (cueMemoryCount.present) {
+      map['cue_memory_count'] = Variable<int>(cueMemoryCount.value);
+    }
     return map;
   }
 
@@ -1763,7 +1872,9 @@ class ListWordsCompanion extends UpdateCompanion<ListWord> {
           ..write('wordId: $wordId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('isForgotten: $isForgotten, ')
-          ..write('forgottenCount: $forgottenCount')
+          ..write('forgottenCount: $forgottenCount, ')
+          ..write('isCueMemory: $isCueMemory, ')
+          ..write('cueMemoryCount: $cueMemoryCount')
           ..write(')'))
         .toString();
   }
@@ -1812,6 +1923,22 @@ class $PracticeSessionsTable extends PracticeSessions
     ),
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionKindMeta = const VerificationMeta(
+    'sessionKind',
+  );
+  @override
+  late final GeneratedColumn<String> sessionKind = GeneratedColumn<String>(
+    'session_kind',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 30,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(PracticeSessionKind.memorization),
   );
   static const VerificationMeta _totalCountMeta = const VerificationMeta(
     'totalCount',
@@ -1873,6 +2000,7 @@ class $PracticeSessionsTable extends PracticeSessions
     id,
     listId,
     mode,
+    sessionKind,
     totalCount,
     correctCount,
     accuracy,
@@ -1909,6 +2037,15 @@ class $PracticeSessionsTable extends PracticeSessions
       );
     } else if (isInserting) {
       context.missing(_modeMeta);
+    }
+    if (data.containsKey('session_kind')) {
+      context.handle(
+        _sessionKindMeta,
+        sessionKind.isAcceptableOrUnknown(
+          data['session_kind']!,
+          _sessionKindMeta,
+        ),
+      );
     }
     if (data.containsKey('total_count')) {
       context.handle(
@@ -1972,6 +2109,10 @@ class $PracticeSessionsTable extends PracticeSessions
         DriftSqlType.string,
         data['${effectivePrefix}mode'],
       )!,
+      sessionKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_kind'],
+      )!,
       totalCount: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}total_count'],
@@ -2005,6 +2146,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
   final int id;
   final int listId;
   final String mode;
+  final String sessionKind;
   final int totalCount;
   final int correctCount;
   final double accuracy;
@@ -2014,6 +2156,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
     required this.id,
     required this.listId,
     required this.mode,
+    required this.sessionKind,
     required this.totalCount,
     required this.correctCount,
     required this.accuracy,
@@ -2026,6 +2169,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
     map['id'] = Variable<int>(id);
     map['list_id'] = Variable<int>(listId);
     map['mode'] = Variable<String>(mode);
+    map['session_kind'] = Variable<String>(sessionKind);
     map['total_count'] = Variable<int>(totalCount);
     map['correct_count'] = Variable<int>(correctCount);
     map['accuracy'] = Variable<double>(accuracy);
@@ -2041,6 +2185,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
       id: Value(id),
       listId: Value(listId),
       mode: Value(mode),
+      sessionKind: Value(sessionKind),
       totalCount: Value(totalCount),
       correctCount: Value(correctCount),
       accuracy: Value(accuracy),
@@ -2060,6 +2205,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
       id: serializer.fromJson<int>(json['id']),
       listId: serializer.fromJson<int>(json['listId']),
       mode: serializer.fromJson<String>(json['mode']),
+      sessionKind: serializer.fromJson<String>(json['sessionKind']),
       totalCount: serializer.fromJson<int>(json['totalCount']),
       correctCount: serializer.fromJson<int>(json['correctCount']),
       accuracy: serializer.fromJson<double>(json['accuracy']),
@@ -2074,6 +2220,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
       'id': serializer.toJson<int>(id),
       'listId': serializer.toJson<int>(listId),
       'mode': serializer.toJson<String>(mode),
+      'sessionKind': serializer.toJson<String>(sessionKind),
       'totalCount': serializer.toJson<int>(totalCount),
       'correctCount': serializer.toJson<int>(correctCount),
       'accuracy': serializer.toJson<double>(accuracy),
@@ -2086,6 +2233,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
     int? id,
     int? listId,
     String? mode,
+    String? sessionKind,
     int? totalCount,
     int? correctCount,
     double? accuracy,
@@ -2095,6 +2243,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
     id: id ?? this.id,
     listId: listId ?? this.listId,
     mode: mode ?? this.mode,
+    sessionKind: sessionKind ?? this.sessionKind,
     totalCount: totalCount ?? this.totalCount,
     correctCount: correctCount ?? this.correctCount,
     accuracy: accuracy ?? this.accuracy,
@@ -2106,6 +2255,9 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
       id: data.id.present ? data.id.value : this.id,
       listId: data.listId.present ? data.listId.value : this.listId,
       mode: data.mode.present ? data.mode.value : this.mode,
+      sessionKind: data.sessionKind.present
+          ? data.sessionKind.value
+          : this.sessionKind,
       totalCount: data.totalCount.present
           ? data.totalCount.value
           : this.totalCount,
@@ -2126,6 +2278,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
           ..write('id: $id, ')
           ..write('listId: $listId, ')
           ..write('mode: $mode, ')
+          ..write('sessionKind: $sessionKind, ')
           ..write('totalCount: $totalCount, ')
           ..write('correctCount: $correctCount, ')
           ..write('accuracy: $accuracy, ')
@@ -2140,6 +2293,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
     id,
     listId,
     mode,
+    sessionKind,
     totalCount,
     correctCount,
     accuracy,
@@ -2153,6 +2307,7 @@ class PracticeSession extends DataClass implements Insertable<PracticeSession> {
           other.id == this.id &&
           other.listId == this.listId &&
           other.mode == this.mode &&
+          other.sessionKind == this.sessionKind &&
           other.totalCount == this.totalCount &&
           other.correctCount == this.correctCount &&
           other.accuracy == this.accuracy &&
@@ -2164,6 +2319,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
   final Value<int> id;
   final Value<int> listId;
   final Value<String> mode;
+  final Value<String> sessionKind;
   final Value<int> totalCount;
   final Value<int> correctCount;
   final Value<double> accuracy;
@@ -2173,6 +2329,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
     this.id = const Value.absent(),
     this.listId = const Value.absent(),
     this.mode = const Value.absent(),
+    this.sessionKind = const Value.absent(),
     this.totalCount = const Value.absent(),
     this.correctCount = const Value.absent(),
     this.accuracy = const Value.absent(),
@@ -2183,6 +2340,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
     this.id = const Value.absent(),
     required int listId,
     required String mode,
+    this.sessionKind = const Value.absent(),
     required int totalCount,
     required int correctCount,
     required double accuracy,
@@ -2198,6 +2356,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
     Expression<int>? id,
     Expression<int>? listId,
     Expression<String>? mode,
+    Expression<String>? sessionKind,
     Expression<int>? totalCount,
     Expression<int>? correctCount,
     Expression<double>? accuracy,
@@ -2208,6 +2367,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
       if (id != null) 'id': id,
       if (listId != null) 'list_id': listId,
       if (mode != null) 'mode': mode,
+      if (sessionKind != null) 'session_kind': sessionKind,
       if (totalCount != null) 'total_count': totalCount,
       if (correctCount != null) 'correct_count': correctCount,
       if (accuracy != null) 'accuracy': accuracy,
@@ -2220,6 +2380,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
     Value<int>? id,
     Value<int>? listId,
     Value<String>? mode,
+    Value<String>? sessionKind,
     Value<int>? totalCount,
     Value<int>? correctCount,
     Value<double>? accuracy,
@@ -2230,6 +2391,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
       id: id ?? this.id,
       listId: listId ?? this.listId,
       mode: mode ?? this.mode,
+      sessionKind: sessionKind ?? this.sessionKind,
       totalCount: totalCount ?? this.totalCount,
       correctCount: correctCount ?? this.correctCount,
       accuracy: accuracy ?? this.accuracy,
@@ -2249,6 +2411,9 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
     }
     if (mode.present) {
       map['mode'] = Variable<String>(mode.value);
+    }
+    if (sessionKind.present) {
+      map['session_kind'] = Variable<String>(sessionKind.value);
     }
     if (totalCount.present) {
       map['total_count'] = Variable<int>(totalCount.value);
@@ -2274,6 +2439,7 @@ class PracticeSessionsCompanion extends UpdateCompanion<PracticeSession> {
           ..write('id: $id, ')
           ..write('listId: $listId, ')
           ..write('mode: $mode, ')
+          ..write('sessionKind: $sessionKind, ')
           ..write('totalCount: $totalCount, ')
           ..write('correctCount: $correctCount, ')
           ..write('accuracy: $accuracy, ')
@@ -3853,6 +4019,1518 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
           ..write('key: $key, ')
           ..write('value: $value, ')
           ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LearningActivityRecordsTable extends LearningActivityRecords
+    with TableInfo<$LearningActivityRecordsTable, LearningActivityRecord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LearningActivityRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _activityTypeMeta = const VerificationMeta(
+    'activityType',
+  );
+  @override
+  late final GeneratedColumn<String> activityType = GeneratedColumn<String>(
+    'activity_type',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 30,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subtypeMeta = const VerificationMeta(
+    'subtype',
+  );
+  @override
+  late final GeneratedColumn<String> subtype = GeneratedColumn<String>(
+    'subtype',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 20,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<int> startedAt = GeneratedColumn<int>(
+    'started_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _finishedAtMeta = const VerificationMeta(
+    'finishedAt',
+  );
+  @override
+  late final GeneratedColumn<int> finishedAt = GeneratedColumn<int>(
+    'finished_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _questionCountMeta = const VerificationMeta(
+    'questionCount',
+  );
+  @override
+  late final GeneratedColumn<int> questionCount = GeneratedColumn<int>(
+    'question_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _correctCountMeta = const VerificationMeta(
+    'correctCount',
+  );
+  @override
+  late final GeneratedColumn<int> correctCount = GeneratedColumn<int>(
+    'correct_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _accuracyMeta = const VerificationMeta(
+    'accuracy',
+  );
+  @override
+  late final GeneratedColumn<double> accuracy = GeneratedColumn<double>(
+    'accuracy',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _turnCountMeta = const VerificationMeta(
+    'turnCount',
+  );
+  @override
+  late final GeneratedColumn<int> turnCount = GeneratedColumn<int>(
+    'turn_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _targetWordUseCountMeta =
+      const VerificationMeta('targetWordUseCount');
+  @override
+  late final GeneratedColumn<int> targetWordUseCount = GeneratedColumn<int>(
+    'target_word_use_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _naturalnessAverageMeta =
+      const VerificationMeta('naturalnessAverage');
+  @override
+  late final GeneratedColumn<double> naturalnessAverage =
+      GeneratedColumn<double>(
+        'naturalness_average',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _contextFitAverageMeta = const VerificationMeta(
+    'contextFitAverage',
+  );
+  @override
+  late final GeneratedColumn<double> contextFitAverage =
+      GeneratedColumn<double>(
+        'context_fit_average',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _skillRunCountMeta = const VerificationMeta(
+    'skillRunCount',
+  );
+  @override
+  late final GeneratedColumn<int> skillRunCount = GeneratedColumn<int>(
+    'skill_run_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _involvedWordCountMeta = const VerificationMeta(
+    'involvedWordCount',
+  );
+  @override
+  late final GeneratedColumn<int> involvedWordCount = GeneratedColumn<int>(
+    'involved_word_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    activityType,
+    subtype,
+    status,
+    startedAt,
+    finishedAt,
+    questionCount,
+    correctCount,
+    accuracy,
+    turnCount,
+    targetWordUseCount,
+    naturalnessAverage,
+    contextFitAverage,
+    skillRunCount,
+    involvedWordCount,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'learning_activity_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LearningActivityRecord> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('activity_type')) {
+      context.handle(
+        _activityTypeMeta,
+        activityType.isAcceptableOrUnknown(
+          data['activity_type']!,
+          _activityTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_activityTypeMeta);
+    }
+    if (data.containsKey('subtype')) {
+      context.handle(
+        _subtypeMeta,
+        subtype.isAcceptableOrUnknown(data['subtype']!, _subtypeMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startedAtMeta);
+    }
+    if (data.containsKey('finished_at')) {
+      context.handle(
+        _finishedAtMeta,
+        finishedAt.isAcceptableOrUnknown(data['finished_at']!, _finishedAtMeta),
+      );
+    }
+    if (data.containsKey('question_count')) {
+      context.handle(
+        _questionCountMeta,
+        questionCount.isAcceptableOrUnknown(
+          data['question_count']!,
+          _questionCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('correct_count')) {
+      context.handle(
+        _correctCountMeta,
+        correctCount.isAcceptableOrUnknown(
+          data['correct_count']!,
+          _correctCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('accuracy')) {
+      context.handle(
+        _accuracyMeta,
+        accuracy.isAcceptableOrUnknown(data['accuracy']!, _accuracyMeta),
+      );
+    }
+    if (data.containsKey('turn_count')) {
+      context.handle(
+        _turnCountMeta,
+        turnCount.isAcceptableOrUnknown(data['turn_count']!, _turnCountMeta),
+      );
+    }
+    if (data.containsKey('target_word_use_count')) {
+      context.handle(
+        _targetWordUseCountMeta,
+        targetWordUseCount.isAcceptableOrUnknown(
+          data['target_word_use_count']!,
+          _targetWordUseCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('naturalness_average')) {
+      context.handle(
+        _naturalnessAverageMeta,
+        naturalnessAverage.isAcceptableOrUnknown(
+          data['naturalness_average']!,
+          _naturalnessAverageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('context_fit_average')) {
+      context.handle(
+        _contextFitAverageMeta,
+        contextFitAverage.isAcceptableOrUnknown(
+          data['context_fit_average']!,
+          _contextFitAverageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('skill_run_count')) {
+      context.handle(
+        _skillRunCountMeta,
+        skillRunCount.isAcceptableOrUnknown(
+          data['skill_run_count']!,
+          _skillRunCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('involved_word_count')) {
+      context.handle(
+        _involvedWordCountMeta,
+        involvedWordCount.isAcceptableOrUnknown(
+          data['involved_word_count']!,
+          _involvedWordCountMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LearningActivityRecord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LearningActivityRecord(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      activityType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}activity_type'],
+      )!,
+      subtype: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subtype'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}started_at'],
+      )!,
+      finishedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}finished_at'],
+      ),
+      questionCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}question_count'],
+      )!,
+      correctCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}correct_count'],
+      )!,
+      accuracy: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}accuracy'],
+      ),
+      turnCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}turn_count'],
+      )!,
+      targetWordUseCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}target_word_use_count'],
+      )!,
+      naturalnessAverage: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}naturalness_average'],
+      ),
+      contextFitAverage: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}context_fit_average'],
+      ),
+      skillRunCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}skill_run_count'],
+      )!,
+      involvedWordCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}involved_word_count'],
+      )!,
+    );
+  }
+
+  @override
+  $LearningActivityRecordsTable createAlias(String alias) {
+    return $LearningActivityRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class LearningActivityRecord extends DataClass
+    implements Insertable<LearningActivityRecord> {
+  final int id;
+  final String activityType;
+  final String? subtype;
+  final String status;
+  final int startedAt;
+  final int? finishedAt;
+  final int questionCount;
+  final int correctCount;
+  final double? accuracy;
+  final int turnCount;
+  final int targetWordUseCount;
+  final double? naturalnessAverage;
+  final double? contextFitAverage;
+  final int skillRunCount;
+  final int involvedWordCount;
+  const LearningActivityRecord({
+    required this.id,
+    required this.activityType,
+    this.subtype,
+    required this.status,
+    required this.startedAt,
+    this.finishedAt,
+    required this.questionCount,
+    required this.correctCount,
+    this.accuracy,
+    required this.turnCount,
+    required this.targetWordUseCount,
+    this.naturalnessAverage,
+    this.contextFitAverage,
+    required this.skillRunCount,
+    required this.involvedWordCount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['activity_type'] = Variable<String>(activityType);
+    if (!nullToAbsent || subtype != null) {
+      map['subtype'] = Variable<String>(subtype);
+    }
+    map['status'] = Variable<String>(status);
+    map['started_at'] = Variable<int>(startedAt);
+    if (!nullToAbsent || finishedAt != null) {
+      map['finished_at'] = Variable<int>(finishedAt);
+    }
+    map['question_count'] = Variable<int>(questionCount);
+    map['correct_count'] = Variable<int>(correctCount);
+    if (!nullToAbsent || accuracy != null) {
+      map['accuracy'] = Variable<double>(accuracy);
+    }
+    map['turn_count'] = Variable<int>(turnCount);
+    map['target_word_use_count'] = Variable<int>(targetWordUseCount);
+    if (!nullToAbsent || naturalnessAverage != null) {
+      map['naturalness_average'] = Variable<double>(naturalnessAverage);
+    }
+    if (!nullToAbsent || contextFitAverage != null) {
+      map['context_fit_average'] = Variable<double>(contextFitAverage);
+    }
+    map['skill_run_count'] = Variable<int>(skillRunCount);
+    map['involved_word_count'] = Variable<int>(involvedWordCount);
+    return map;
+  }
+
+  LearningActivityRecordsCompanion toCompanion(bool nullToAbsent) {
+    return LearningActivityRecordsCompanion(
+      id: Value(id),
+      activityType: Value(activityType),
+      subtype: subtype == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subtype),
+      status: Value(status),
+      startedAt: Value(startedAt),
+      finishedAt: finishedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(finishedAt),
+      questionCount: Value(questionCount),
+      correctCount: Value(correctCount),
+      accuracy: accuracy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accuracy),
+      turnCount: Value(turnCount),
+      targetWordUseCount: Value(targetWordUseCount),
+      naturalnessAverage: naturalnessAverage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(naturalnessAverage),
+      contextFitAverage: contextFitAverage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contextFitAverage),
+      skillRunCount: Value(skillRunCount),
+      involvedWordCount: Value(involvedWordCount),
+    );
+  }
+
+  factory LearningActivityRecord.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LearningActivityRecord(
+      id: serializer.fromJson<int>(json['id']),
+      activityType: serializer.fromJson<String>(json['activityType']),
+      subtype: serializer.fromJson<String?>(json['subtype']),
+      status: serializer.fromJson<String>(json['status']),
+      startedAt: serializer.fromJson<int>(json['startedAt']),
+      finishedAt: serializer.fromJson<int?>(json['finishedAt']),
+      questionCount: serializer.fromJson<int>(json['questionCount']),
+      correctCount: serializer.fromJson<int>(json['correctCount']),
+      accuracy: serializer.fromJson<double?>(json['accuracy']),
+      turnCount: serializer.fromJson<int>(json['turnCount']),
+      targetWordUseCount: serializer.fromJson<int>(json['targetWordUseCount']),
+      naturalnessAverage: serializer.fromJson<double?>(
+        json['naturalnessAverage'],
+      ),
+      contextFitAverage: serializer.fromJson<double?>(
+        json['contextFitAverage'],
+      ),
+      skillRunCount: serializer.fromJson<int>(json['skillRunCount']),
+      involvedWordCount: serializer.fromJson<int>(json['involvedWordCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'activityType': serializer.toJson<String>(activityType),
+      'subtype': serializer.toJson<String?>(subtype),
+      'status': serializer.toJson<String>(status),
+      'startedAt': serializer.toJson<int>(startedAt),
+      'finishedAt': serializer.toJson<int?>(finishedAt),
+      'questionCount': serializer.toJson<int>(questionCount),
+      'correctCount': serializer.toJson<int>(correctCount),
+      'accuracy': serializer.toJson<double?>(accuracy),
+      'turnCount': serializer.toJson<int>(turnCount),
+      'targetWordUseCount': serializer.toJson<int>(targetWordUseCount),
+      'naturalnessAverage': serializer.toJson<double?>(naturalnessAverage),
+      'contextFitAverage': serializer.toJson<double?>(contextFitAverage),
+      'skillRunCount': serializer.toJson<int>(skillRunCount),
+      'involvedWordCount': serializer.toJson<int>(involvedWordCount),
+    };
+  }
+
+  LearningActivityRecord copyWith({
+    int? id,
+    String? activityType,
+    Value<String?> subtype = const Value.absent(),
+    String? status,
+    int? startedAt,
+    Value<int?> finishedAt = const Value.absent(),
+    int? questionCount,
+    int? correctCount,
+    Value<double?> accuracy = const Value.absent(),
+    int? turnCount,
+    int? targetWordUseCount,
+    Value<double?> naturalnessAverage = const Value.absent(),
+    Value<double?> contextFitAverage = const Value.absent(),
+    int? skillRunCount,
+    int? involvedWordCount,
+  }) => LearningActivityRecord(
+    id: id ?? this.id,
+    activityType: activityType ?? this.activityType,
+    subtype: subtype.present ? subtype.value : this.subtype,
+    status: status ?? this.status,
+    startedAt: startedAt ?? this.startedAt,
+    finishedAt: finishedAt.present ? finishedAt.value : this.finishedAt,
+    questionCount: questionCount ?? this.questionCount,
+    correctCount: correctCount ?? this.correctCount,
+    accuracy: accuracy.present ? accuracy.value : this.accuracy,
+    turnCount: turnCount ?? this.turnCount,
+    targetWordUseCount: targetWordUseCount ?? this.targetWordUseCount,
+    naturalnessAverage: naturalnessAverage.present
+        ? naturalnessAverage.value
+        : this.naturalnessAverage,
+    contextFitAverage: contextFitAverage.present
+        ? contextFitAverage.value
+        : this.contextFitAverage,
+    skillRunCount: skillRunCount ?? this.skillRunCount,
+    involvedWordCount: involvedWordCount ?? this.involvedWordCount,
+  );
+  LearningActivityRecord copyWithCompanion(
+    LearningActivityRecordsCompanion data,
+  ) {
+    return LearningActivityRecord(
+      id: data.id.present ? data.id.value : this.id,
+      activityType: data.activityType.present
+          ? data.activityType.value
+          : this.activityType,
+      subtype: data.subtype.present ? data.subtype.value : this.subtype,
+      status: data.status.present ? data.status.value : this.status,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      finishedAt: data.finishedAt.present
+          ? data.finishedAt.value
+          : this.finishedAt,
+      questionCount: data.questionCount.present
+          ? data.questionCount.value
+          : this.questionCount,
+      correctCount: data.correctCount.present
+          ? data.correctCount.value
+          : this.correctCount,
+      accuracy: data.accuracy.present ? data.accuracy.value : this.accuracy,
+      turnCount: data.turnCount.present ? data.turnCount.value : this.turnCount,
+      targetWordUseCount: data.targetWordUseCount.present
+          ? data.targetWordUseCount.value
+          : this.targetWordUseCount,
+      naturalnessAverage: data.naturalnessAverage.present
+          ? data.naturalnessAverage.value
+          : this.naturalnessAverage,
+      contextFitAverage: data.contextFitAverage.present
+          ? data.contextFitAverage.value
+          : this.contextFitAverage,
+      skillRunCount: data.skillRunCount.present
+          ? data.skillRunCount.value
+          : this.skillRunCount,
+      involvedWordCount: data.involvedWordCount.present
+          ? data.involvedWordCount.value
+          : this.involvedWordCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearningActivityRecord(')
+          ..write('id: $id, ')
+          ..write('activityType: $activityType, ')
+          ..write('subtype: $subtype, ')
+          ..write('status: $status, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('finishedAt: $finishedAt, ')
+          ..write('questionCount: $questionCount, ')
+          ..write('correctCount: $correctCount, ')
+          ..write('accuracy: $accuracy, ')
+          ..write('turnCount: $turnCount, ')
+          ..write('targetWordUseCount: $targetWordUseCount, ')
+          ..write('naturalnessAverage: $naturalnessAverage, ')
+          ..write('contextFitAverage: $contextFitAverage, ')
+          ..write('skillRunCount: $skillRunCount, ')
+          ..write('involvedWordCount: $involvedWordCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    activityType,
+    subtype,
+    status,
+    startedAt,
+    finishedAt,
+    questionCount,
+    correctCount,
+    accuracy,
+    turnCount,
+    targetWordUseCount,
+    naturalnessAverage,
+    contextFitAverage,
+    skillRunCount,
+    involvedWordCount,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LearningActivityRecord &&
+          other.id == this.id &&
+          other.activityType == this.activityType &&
+          other.subtype == this.subtype &&
+          other.status == this.status &&
+          other.startedAt == this.startedAt &&
+          other.finishedAt == this.finishedAt &&
+          other.questionCount == this.questionCount &&
+          other.correctCount == this.correctCount &&
+          other.accuracy == this.accuracy &&
+          other.turnCount == this.turnCount &&
+          other.targetWordUseCount == this.targetWordUseCount &&
+          other.naturalnessAverage == this.naturalnessAverage &&
+          other.contextFitAverage == this.contextFitAverage &&
+          other.skillRunCount == this.skillRunCount &&
+          other.involvedWordCount == this.involvedWordCount);
+}
+
+class LearningActivityRecordsCompanion
+    extends UpdateCompanion<LearningActivityRecord> {
+  final Value<int> id;
+  final Value<String> activityType;
+  final Value<String?> subtype;
+  final Value<String> status;
+  final Value<int> startedAt;
+  final Value<int?> finishedAt;
+  final Value<int> questionCount;
+  final Value<int> correctCount;
+  final Value<double?> accuracy;
+  final Value<int> turnCount;
+  final Value<int> targetWordUseCount;
+  final Value<double?> naturalnessAverage;
+  final Value<double?> contextFitAverage;
+  final Value<int> skillRunCount;
+  final Value<int> involvedWordCount;
+  const LearningActivityRecordsCompanion({
+    this.id = const Value.absent(),
+    this.activityType = const Value.absent(),
+    this.subtype = const Value.absent(),
+    this.status = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.finishedAt = const Value.absent(),
+    this.questionCount = const Value.absent(),
+    this.correctCount = const Value.absent(),
+    this.accuracy = const Value.absent(),
+    this.turnCount = const Value.absent(),
+    this.targetWordUseCount = const Value.absent(),
+    this.naturalnessAverage = const Value.absent(),
+    this.contextFitAverage = const Value.absent(),
+    this.skillRunCount = const Value.absent(),
+    this.involvedWordCount = const Value.absent(),
+  });
+  LearningActivityRecordsCompanion.insert({
+    this.id = const Value.absent(),
+    required String activityType,
+    this.subtype = const Value.absent(),
+    required String status,
+    required int startedAt,
+    this.finishedAt = const Value.absent(),
+    this.questionCount = const Value.absent(),
+    this.correctCount = const Value.absent(),
+    this.accuracy = const Value.absent(),
+    this.turnCount = const Value.absent(),
+    this.targetWordUseCount = const Value.absent(),
+    this.naturalnessAverage = const Value.absent(),
+    this.contextFitAverage = const Value.absent(),
+    this.skillRunCount = const Value.absent(),
+    this.involvedWordCount = const Value.absent(),
+  }) : activityType = Value(activityType),
+       status = Value(status),
+       startedAt = Value(startedAt);
+  static Insertable<LearningActivityRecord> custom({
+    Expression<int>? id,
+    Expression<String>? activityType,
+    Expression<String>? subtype,
+    Expression<String>? status,
+    Expression<int>? startedAt,
+    Expression<int>? finishedAt,
+    Expression<int>? questionCount,
+    Expression<int>? correctCount,
+    Expression<double>? accuracy,
+    Expression<int>? turnCount,
+    Expression<int>? targetWordUseCount,
+    Expression<double>? naturalnessAverage,
+    Expression<double>? contextFitAverage,
+    Expression<int>? skillRunCount,
+    Expression<int>? involvedWordCount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (activityType != null) 'activity_type': activityType,
+      if (subtype != null) 'subtype': subtype,
+      if (status != null) 'status': status,
+      if (startedAt != null) 'started_at': startedAt,
+      if (finishedAt != null) 'finished_at': finishedAt,
+      if (questionCount != null) 'question_count': questionCount,
+      if (correctCount != null) 'correct_count': correctCount,
+      if (accuracy != null) 'accuracy': accuracy,
+      if (turnCount != null) 'turn_count': turnCount,
+      if (targetWordUseCount != null)
+        'target_word_use_count': targetWordUseCount,
+      if (naturalnessAverage != null) 'naturalness_average': naturalnessAverage,
+      if (contextFitAverage != null) 'context_fit_average': contextFitAverage,
+      if (skillRunCount != null) 'skill_run_count': skillRunCount,
+      if (involvedWordCount != null) 'involved_word_count': involvedWordCount,
+    });
+  }
+
+  LearningActivityRecordsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? activityType,
+    Value<String?>? subtype,
+    Value<String>? status,
+    Value<int>? startedAt,
+    Value<int?>? finishedAt,
+    Value<int>? questionCount,
+    Value<int>? correctCount,
+    Value<double?>? accuracy,
+    Value<int>? turnCount,
+    Value<int>? targetWordUseCount,
+    Value<double?>? naturalnessAverage,
+    Value<double?>? contextFitAverage,
+    Value<int>? skillRunCount,
+    Value<int>? involvedWordCount,
+  }) {
+    return LearningActivityRecordsCompanion(
+      id: id ?? this.id,
+      activityType: activityType ?? this.activityType,
+      subtype: subtype ?? this.subtype,
+      status: status ?? this.status,
+      startedAt: startedAt ?? this.startedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      questionCount: questionCount ?? this.questionCount,
+      correctCount: correctCount ?? this.correctCount,
+      accuracy: accuracy ?? this.accuracy,
+      turnCount: turnCount ?? this.turnCount,
+      targetWordUseCount: targetWordUseCount ?? this.targetWordUseCount,
+      naturalnessAverage: naturalnessAverage ?? this.naturalnessAverage,
+      contextFitAverage: contextFitAverage ?? this.contextFitAverage,
+      skillRunCount: skillRunCount ?? this.skillRunCount,
+      involvedWordCount: involvedWordCount ?? this.involvedWordCount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (activityType.present) {
+      map['activity_type'] = Variable<String>(activityType.value);
+    }
+    if (subtype.present) {
+      map['subtype'] = Variable<String>(subtype.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<int>(startedAt.value);
+    }
+    if (finishedAt.present) {
+      map['finished_at'] = Variable<int>(finishedAt.value);
+    }
+    if (questionCount.present) {
+      map['question_count'] = Variable<int>(questionCount.value);
+    }
+    if (correctCount.present) {
+      map['correct_count'] = Variable<int>(correctCount.value);
+    }
+    if (accuracy.present) {
+      map['accuracy'] = Variable<double>(accuracy.value);
+    }
+    if (turnCount.present) {
+      map['turn_count'] = Variable<int>(turnCount.value);
+    }
+    if (targetWordUseCount.present) {
+      map['target_word_use_count'] = Variable<int>(targetWordUseCount.value);
+    }
+    if (naturalnessAverage.present) {
+      map['naturalness_average'] = Variable<double>(naturalnessAverage.value);
+    }
+    if (contextFitAverage.present) {
+      map['context_fit_average'] = Variable<double>(contextFitAverage.value);
+    }
+    if (skillRunCount.present) {
+      map['skill_run_count'] = Variable<int>(skillRunCount.value);
+    }
+    if (involvedWordCount.present) {
+      map['involved_word_count'] = Variable<int>(involvedWordCount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearningActivityRecordsCompanion(')
+          ..write('id: $id, ')
+          ..write('activityType: $activityType, ')
+          ..write('subtype: $subtype, ')
+          ..write('status: $status, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('finishedAt: $finishedAt, ')
+          ..write('questionCount: $questionCount, ')
+          ..write('correctCount: $correctCount, ')
+          ..write('accuracy: $accuracy, ')
+          ..write('turnCount: $turnCount, ')
+          ..write('targetWordUseCount: $targetWordUseCount, ')
+          ..write('naturalnessAverage: $naturalnessAverage, ')
+          ..write('contextFitAverage: $contextFitAverage, ')
+          ..write('skillRunCount: $skillRunCount, ')
+          ..write('involvedWordCount: $involvedWordCount')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LearningActivityListsTable extends LearningActivityLists
+    with TableInfo<$LearningActivityListsTable, LearningActivityList> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LearningActivityListsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _activityIdMeta = const VerificationMeta(
+    'activityId',
+  );
+  @override
+  late final GeneratedColumn<int> activityId = GeneratedColumn<int>(
+    'activity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES learning_activity_records (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _listIdMeta = const VerificationMeta('listId');
+  @override
+  late final GeneratedColumn<int> listId = GeneratedColumn<int>(
+    'list_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES word_lists (id) ON DELETE CASCADE',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, activityId, listId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'learning_activity_lists';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LearningActivityList> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('activity_id')) {
+      context.handle(
+        _activityIdMeta,
+        activityId.isAcceptableOrUnknown(data['activity_id']!, _activityIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_activityIdMeta);
+    }
+    if (data.containsKey('list_id')) {
+      context.handle(
+        _listIdMeta,
+        listId.isAcceptableOrUnknown(data['list_id']!, _listIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_listIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LearningActivityList map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LearningActivityList(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      activityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}activity_id'],
+      )!,
+      listId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}list_id'],
+      )!,
+    );
+  }
+
+  @override
+  $LearningActivityListsTable createAlias(String alias) {
+    return $LearningActivityListsTable(attachedDatabase, alias);
+  }
+}
+
+class LearningActivityList extends DataClass
+    implements Insertable<LearningActivityList> {
+  final int id;
+  final int activityId;
+  final int listId;
+  const LearningActivityList({
+    required this.id,
+    required this.activityId,
+    required this.listId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['activity_id'] = Variable<int>(activityId);
+    map['list_id'] = Variable<int>(listId);
+    return map;
+  }
+
+  LearningActivityListsCompanion toCompanion(bool nullToAbsent) {
+    return LearningActivityListsCompanion(
+      id: Value(id),
+      activityId: Value(activityId),
+      listId: Value(listId),
+    );
+  }
+
+  factory LearningActivityList.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LearningActivityList(
+      id: serializer.fromJson<int>(json['id']),
+      activityId: serializer.fromJson<int>(json['activityId']),
+      listId: serializer.fromJson<int>(json['listId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'activityId': serializer.toJson<int>(activityId),
+      'listId': serializer.toJson<int>(listId),
+    };
+  }
+
+  LearningActivityList copyWith({int? id, int? activityId, int? listId}) =>
+      LearningActivityList(
+        id: id ?? this.id,
+        activityId: activityId ?? this.activityId,
+        listId: listId ?? this.listId,
+      );
+  LearningActivityList copyWithCompanion(LearningActivityListsCompanion data) {
+    return LearningActivityList(
+      id: data.id.present ? data.id.value : this.id,
+      activityId: data.activityId.present
+          ? data.activityId.value
+          : this.activityId,
+      listId: data.listId.present ? data.listId.value : this.listId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearningActivityList(')
+          ..write('id: $id, ')
+          ..write('activityId: $activityId, ')
+          ..write('listId: $listId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, activityId, listId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LearningActivityList &&
+          other.id == this.id &&
+          other.activityId == this.activityId &&
+          other.listId == this.listId);
+}
+
+class LearningActivityListsCompanion
+    extends UpdateCompanion<LearningActivityList> {
+  final Value<int> id;
+  final Value<int> activityId;
+  final Value<int> listId;
+  const LearningActivityListsCompanion({
+    this.id = const Value.absent(),
+    this.activityId = const Value.absent(),
+    this.listId = const Value.absent(),
+  });
+  LearningActivityListsCompanion.insert({
+    this.id = const Value.absent(),
+    required int activityId,
+    required int listId,
+  }) : activityId = Value(activityId),
+       listId = Value(listId);
+  static Insertable<LearningActivityList> custom({
+    Expression<int>? id,
+    Expression<int>? activityId,
+    Expression<int>? listId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (activityId != null) 'activity_id': activityId,
+      if (listId != null) 'list_id': listId,
+    });
+  }
+
+  LearningActivityListsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? activityId,
+    Value<int>? listId,
+  }) {
+    return LearningActivityListsCompanion(
+      id: id ?? this.id,
+      activityId: activityId ?? this.activityId,
+      listId: listId ?? this.listId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (activityId.present) {
+      map['activity_id'] = Variable<int>(activityId.value);
+    }
+    if (listId.present) {
+      map['list_id'] = Variable<int>(listId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearningActivityListsCompanion(')
+          ..write('id: $id, ')
+          ..write('activityId: $activityId, ')
+          ..write('listId: $listId')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LearningActivityWordsTable extends LearningActivityWords
+    with TableInfo<$LearningActivityWordsTable, LearningActivityWord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LearningActivityWordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _activityIdMeta = const VerificationMeta(
+    'activityId',
+  );
+  @override
+  late final GeneratedColumn<int> activityId = GeneratedColumn<int>(
+    'activity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES learning_activity_records (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _wordIdMeta = const VerificationMeta('wordId');
+  @override
+  late final GeneratedColumn<int> wordId = GeneratedColumn<int>(
+    'word_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES words (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _usageCountMeta = const VerificationMeta(
+    'usageCount',
+  );
+  @override
+  late final GeneratedColumn<int> usageCount = GeneratedColumn<int>(
+    'usage_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _errorCountMeta = const VerificationMeta(
+    'errorCount',
+  );
+  @override
+  late final GeneratedColumn<int> errorCount = GeneratedColumn<int>(
+    'error_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    activityId,
+    wordId,
+    usageCount,
+    errorCount,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'learning_activity_words';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LearningActivityWord> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('activity_id')) {
+      context.handle(
+        _activityIdMeta,
+        activityId.isAcceptableOrUnknown(data['activity_id']!, _activityIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_activityIdMeta);
+    }
+    if (data.containsKey('word_id')) {
+      context.handle(
+        _wordIdMeta,
+        wordId.isAcceptableOrUnknown(data['word_id']!, _wordIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_wordIdMeta);
+    }
+    if (data.containsKey('usage_count')) {
+      context.handle(
+        _usageCountMeta,
+        usageCount.isAcceptableOrUnknown(data['usage_count']!, _usageCountMeta),
+      );
+    }
+    if (data.containsKey('error_count')) {
+      context.handle(
+        _errorCountMeta,
+        errorCount.isAcceptableOrUnknown(data['error_count']!, _errorCountMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LearningActivityWord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LearningActivityWord(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      activityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}activity_id'],
+      )!,
+      wordId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}word_id'],
+      )!,
+      usageCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}usage_count'],
+      )!,
+      errorCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}error_count'],
+      )!,
+    );
+  }
+
+  @override
+  $LearningActivityWordsTable createAlias(String alias) {
+    return $LearningActivityWordsTable(attachedDatabase, alias);
+  }
+}
+
+class LearningActivityWord extends DataClass
+    implements Insertable<LearningActivityWord> {
+  final int id;
+  final int activityId;
+  final int wordId;
+  final int usageCount;
+  final int errorCount;
+  const LearningActivityWord({
+    required this.id,
+    required this.activityId,
+    required this.wordId,
+    required this.usageCount,
+    required this.errorCount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['activity_id'] = Variable<int>(activityId);
+    map['word_id'] = Variable<int>(wordId);
+    map['usage_count'] = Variable<int>(usageCount);
+    map['error_count'] = Variable<int>(errorCount);
+    return map;
+  }
+
+  LearningActivityWordsCompanion toCompanion(bool nullToAbsent) {
+    return LearningActivityWordsCompanion(
+      id: Value(id),
+      activityId: Value(activityId),
+      wordId: Value(wordId),
+      usageCount: Value(usageCount),
+      errorCount: Value(errorCount),
+    );
+  }
+
+  factory LearningActivityWord.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LearningActivityWord(
+      id: serializer.fromJson<int>(json['id']),
+      activityId: serializer.fromJson<int>(json['activityId']),
+      wordId: serializer.fromJson<int>(json['wordId']),
+      usageCount: serializer.fromJson<int>(json['usageCount']),
+      errorCount: serializer.fromJson<int>(json['errorCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'activityId': serializer.toJson<int>(activityId),
+      'wordId': serializer.toJson<int>(wordId),
+      'usageCount': serializer.toJson<int>(usageCount),
+      'errorCount': serializer.toJson<int>(errorCount),
+    };
+  }
+
+  LearningActivityWord copyWith({
+    int? id,
+    int? activityId,
+    int? wordId,
+    int? usageCount,
+    int? errorCount,
+  }) => LearningActivityWord(
+    id: id ?? this.id,
+    activityId: activityId ?? this.activityId,
+    wordId: wordId ?? this.wordId,
+    usageCount: usageCount ?? this.usageCount,
+    errorCount: errorCount ?? this.errorCount,
+  );
+  LearningActivityWord copyWithCompanion(LearningActivityWordsCompanion data) {
+    return LearningActivityWord(
+      id: data.id.present ? data.id.value : this.id,
+      activityId: data.activityId.present
+          ? data.activityId.value
+          : this.activityId,
+      wordId: data.wordId.present ? data.wordId.value : this.wordId,
+      usageCount: data.usageCount.present
+          ? data.usageCount.value
+          : this.usageCount,
+      errorCount: data.errorCount.present
+          ? data.errorCount.value
+          : this.errorCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearningActivityWord(')
+          ..write('id: $id, ')
+          ..write('activityId: $activityId, ')
+          ..write('wordId: $wordId, ')
+          ..write('usageCount: $usageCount, ')
+          ..write('errorCount: $errorCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, activityId, wordId, usageCount, errorCount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LearningActivityWord &&
+          other.id == this.id &&
+          other.activityId == this.activityId &&
+          other.wordId == this.wordId &&
+          other.usageCount == this.usageCount &&
+          other.errorCount == this.errorCount);
+}
+
+class LearningActivityWordsCompanion
+    extends UpdateCompanion<LearningActivityWord> {
+  final Value<int> id;
+  final Value<int> activityId;
+  final Value<int> wordId;
+  final Value<int> usageCount;
+  final Value<int> errorCount;
+  const LearningActivityWordsCompanion({
+    this.id = const Value.absent(),
+    this.activityId = const Value.absent(),
+    this.wordId = const Value.absent(),
+    this.usageCount = const Value.absent(),
+    this.errorCount = const Value.absent(),
+  });
+  LearningActivityWordsCompanion.insert({
+    this.id = const Value.absent(),
+    required int activityId,
+    required int wordId,
+    this.usageCount = const Value.absent(),
+    this.errorCount = const Value.absent(),
+  }) : activityId = Value(activityId),
+       wordId = Value(wordId);
+  static Insertable<LearningActivityWord> custom({
+    Expression<int>? id,
+    Expression<int>? activityId,
+    Expression<int>? wordId,
+    Expression<int>? usageCount,
+    Expression<int>? errorCount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (activityId != null) 'activity_id': activityId,
+      if (wordId != null) 'word_id': wordId,
+      if (usageCount != null) 'usage_count': usageCount,
+      if (errorCount != null) 'error_count': errorCount,
+    });
+  }
+
+  LearningActivityWordsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? activityId,
+    Value<int>? wordId,
+    Value<int>? usageCount,
+    Value<int>? errorCount,
+  }) {
+    return LearningActivityWordsCompanion(
+      id: id ?? this.id,
+      activityId: activityId ?? this.activityId,
+      wordId: wordId ?? this.wordId,
+      usageCount: usageCount ?? this.usageCount,
+      errorCount: errorCount ?? this.errorCount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (activityId.present) {
+      map['activity_id'] = Variable<int>(activityId.value);
+    }
+    if (wordId.present) {
+      map['word_id'] = Variable<int>(wordId.value);
+    }
+    if (usageCount.present) {
+      map['usage_count'] = Variable<int>(usageCount.value);
+    }
+    if (errorCount.present) {
+      map['error_count'] = Variable<int>(errorCount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearningActivityWordsCompanion(')
+          ..write('id: $id, ')
+          ..write('activityId: $activityId, ')
+          ..write('wordId: $wordId, ')
+          ..write('usageCount: $usageCount, ')
+          ..write('errorCount: $errorCount')
           ..write(')'))
         .toString();
   }
@@ -5439,6 +7117,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ErrorWordsTable errorWords = $ErrorWordsTable(this);
   late final $AiContentTable aiContent = $AiContentTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $LearningActivityRecordsTable learningActivityRecords =
+      $LearningActivityRecordsTable(this);
+  late final $LearningActivityListsTable learningActivityLists =
+      $LearningActivityListsTable(this);
+  late final $LearningActivityWordsTable learningActivityWords =
+      $LearningActivityWordsTable(this);
   late final $TtsUsageRecordsTable ttsUsageRecords = $TtsUsageRecordsTable(
     this,
   );
@@ -5459,9 +7143,43 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     errorWords,
     aiContent,
     settings,
+    learningActivityRecords,
+    learningActivityLists,
+    learningActivityWords,
     ttsUsageRecords,
     ttsCacheRecords,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'learning_activity_records',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('learning_activity_lists', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'word_lists',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('learning_activity_lists', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'learning_activity_records',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('learning_activity_words', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'words',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('learning_activity_words', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$WordsTableCreateCompanionBuilder =
@@ -5560,6 +7278,34 @@ final class $$WordsTableReferences
     ).filter((f) => f.wordId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_aiContentRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $LearningActivityWordsTable,
+    List<LearningActivityWord>
+  >
+  _learningActivityWordsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.learningActivityWords,
+        aliasName: $_aliasNameGenerator(
+          db.words.id,
+          db.learningActivityWords.wordId,
+        ),
+      );
+
+  $$LearningActivityWordsTableProcessedTableManager
+  get learningActivityWordsRefs {
+    final manager = $$LearningActivityWordsTableTableManager(
+      $_db,
+      $_db.learningActivityWords,
+    ).filter((f) => f.wordId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _learningActivityWordsRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -5711,6 +7457,32 @@ class $$WordsTableFilterComposer extends Composer<_$AppDatabase, $WordsTable> {
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> learningActivityWordsRefs(
+    Expression<bool> Function($$LearningActivityWordsTableFilterComposer f) f,
+  ) {
+    final $$LearningActivityWordsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityWords,
+          getReferencedColumn: (t) => t.wordId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityWordsTableFilterComposer(
+                $db: $db,
+                $table: $db.learningActivityWords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -5907,6 +7679,32 @@ class $$WordsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> learningActivityWordsRefs<T extends Object>(
+    Expression<T> Function($$LearningActivityWordsTableAnnotationComposer a) f,
+  ) {
+    final $$LearningActivityWordsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityWords,
+          getReferencedColumn: (t) => t.wordId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityWordsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.learningActivityWords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$WordsTableTableManager
@@ -5927,6 +7725,7 @@ class $$WordsTableTableManager
             bool practiceAnswersRefs,
             bool errorWordsRefs,
             bool aiContentRefs,
+            bool learningActivityWordsRefs,
           })
         > {
   $$WordsTableTableManager(_$AppDatabase db, $WordsTable table)
@@ -5992,6 +7791,7 @@ class $$WordsTableTableManager
                 practiceAnswersRefs = false,
                 errorWordsRefs = false,
                 aiContentRefs = false,
+                learningActivityWordsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -6000,6 +7800,7 @@ class $$WordsTableTableManager
                     if (practiceAnswersRefs) db.practiceAnswers,
                     if (errorWordsRefs) db.errorWords,
                     if (aiContentRefs) db.aiContent,
+                    if (learningActivityWordsRefs) db.learningActivityWords,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -6080,6 +7881,27 @@ class $$WordsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (learningActivityWordsRefs)
+                        await $_getPrefetchedData<
+                          Word,
+                          $WordsTable,
+                          LearningActivityWord
+                        >(
+                          currentTable: table,
+                          referencedTable: $$WordsTableReferences
+                              ._learningActivityWordsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$WordsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).learningActivityWordsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.wordId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -6105,6 +7927,7 @@ typedef $$WordsTableProcessedTableManager =
         bool practiceAnswersRefs,
         bool errorWordsRefs,
         bool aiContentRefs,
+        bool learningActivityWordsRefs,
       })
     >;
 typedef $$WordBooksTableCreateCompanionBuilder =
@@ -6487,6 +8310,34 @@ final class $$WordListsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $LearningActivityListsTable,
+    List<LearningActivityList>
+  >
+  _learningActivityListsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.learningActivityLists,
+        aliasName: $_aliasNameGenerator(
+          db.wordLists.id,
+          db.learningActivityLists.listId,
+        ),
+      );
+
+  $$LearningActivityListsTableProcessedTableManager
+  get learningActivityListsRefs {
+    final manager = $$LearningActivityListsTableTableManager(
+      $_db,
+      $_db.learningActivityLists,
+    ).filter((f) => f.listId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _learningActivityListsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$WordListsTableFilterComposer
@@ -6628,6 +8479,32 @@ class $$WordListsTableFilterComposer
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> learningActivityListsRefs(
+    Expression<bool> Function($$LearningActivityListsTableFilterComposer f) f,
+  ) {
+    final $$LearningActivityListsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityLists,
+          getReferencedColumn: (t) => t.listId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityListsTableFilterComposer(
+                $db: $db,
+                $table: $db.learningActivityLists,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -6831,6 +8708,32 @@ class $$WordListsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> learningActivityListsRefs<T extends Object>(
+    Expression<T> Function($$LearningActivityListsTableAnnotationComposer a) f,
+  ) {
+    final $$LearningActivityListsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityLists,
+          getReferencedColumn: (t) => t.listId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityListsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.learningActivityLists,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$WordListsTableTableManager
@@ -6851,6 +8754,7 @@ class $$WordListsTableTableManager
             bool listWordsRefs,
             bool practiceSessionsRefs,
             bool errorWordsRefs,
+            bool learningActivityListsRefs,
           })
         > {
   $$WordListsTableTableManager(_$AppDatabase db, $WordListsTable table)
@@ -6918,6 +8822,7 @@ class $$WordListsTableTableManager
                 listWordsRefs = false,
                 practiceSessionsRefs = false,
                 errorWordsRefs = false,
+                learningActivityListsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -6925,6 +8830,7 @@ class $$WordListsTableTableManager
                     if (listWordsRefs) db.listWords,
                     if (practiceSessionsRefs) db.practiceSessions,
                     if (errorWordsRefs) db.errorWords,
+                    if (learningActivityListsRefs) db.learningActivityLists,
                   ],
                   addJoins:
                       <
@@ -7023,6 +8929,27 @@ class $$WordListsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (learningActivityListsRefs)
+                        await $_getPrefetchedData<
+                          WordList,
+                          $WordListsTable,
+                          LearningActivityList
+                        >(
+                          currentTable: table,
+                          referencedTable: $$WordListsTableReferences
+                              ._learningActivityListsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$WordListsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).learningActivityListsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.listId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -7048,6 +8975,7 @@ typedef $$WordListsTableProcessedTableManager =
         bool listWordsRefs,
         bool practiceSessionsRefs,
         bool errorWordsRefs,
+        bool learningActivityListsRefs,
       })
     >;
 typedef $$ListWordsTableCreateCompanionBuilder =
@@ -7058,6 +8986,8 @@ typedef $$ListWordsTableCreateCompanionBuilder =
       required int sortOrder,
       Value<bool> isForgotten,
       Value<int> forgottenCount,
+      Value<bool> isCueMemory,
+      Value<int> cueMemoryCount,
     });
 typedef $$ListWordsTableUpdateCompanionBuilder =
     ListWordsCompanion Function({
@@ -7067,6 +8997,8 @@ typedef $$ListWordsTableUpdateCompanionBuilder =
       Value<int> sortOrder,
       Value<bool> isForgotten,
       Value<int> forgottenCount,
+      Value<bool> isCueMemory,
+      Value<int> cueMemoryCount,
     });
 
 final class $$ListWordsTableReferences
@@ -7135,6 +9067,16 @@ class $$ListWordsTableFilterComposer
 
   ColumnFilters<int> get forgottenCount => $composableBuilder(
     column: $table.forgottenCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isCueMemory => $composableBuilder(
+    column: $table.isCueMemory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cueMemoryCount => $composableBuilder(
+    column: $table.cueMemoryCount,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7214,6 +9156,16 @@ class $$ListWordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isCueMemory => $composableBuilder(
+    column: $table.isCueMemory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cueMemoryCount => $composableBuilder(
+    column: $table.cueMemoryCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WordListsTableOrderingComposer get listId {
     final $$WordListsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7283,6 +9235,16 @@ class $$ListWordsTableAnnotationComposer
 
   GeneratedColumn<int> get forgottenCount => $composableBuilder(
     column: $table.forgottenCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isCueMemory => $composableBuilder(
+    column: $table.isCueMemory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cueMemoryCount => $composableBuilder(
+    column: $table.cueMemoryCount,
     builder: (column) => column,
   );
 
@@ -7367,6 +9329,8 @@ class $$ListWordsTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<bool> isForgotten = const Value.absent(),
                 Value<int> forgottenCount = const Value.absent(),
+                Value<bool> isCueMemory = const Value.absent(),
+                Value<int> cueMemoryCount = const Value.absent(),
               }) => ListWordsCompanion(
                 id: id,
                 listId: listId,
@@ -7374,6 +9338,8 @@ class $$ListWordsTableTableManager
                 sortOrder: sortOrder,
                 isForgotten: isForgotten,
                 forgottenCount: forgottenCount,
+                isCueMemory: isCueMemory,
+                cueMemoryCount: cueMemoryCount,
               ),
           createCompanionCallback:
               ({
@@ -7383,6 +9349,8 @@ class $$ListWordsTableTableManager
                 required int sortOrder,
                 Value<bool> isForgotten = const Value.absent(),
                 Value<int> forgottenCount = const Value.absent(),
+                Value<bool> isCueMemory = const Value.absent(),
+                Value<int> cueMemoryCount = const Value.absent(),
               }) => ListWordsCompanion.insert(
                 id: id,
                 listId: listId,
@@ -7390,6 +9358,8 @@ class $$ListWordsTableTableManager
                 sortOrder: sortOrder,
                 isForgotten: isForgotten,
                 forgottenCount: forgottenCount,
+                isCueMemory: isCueMemory,
+                cueMemoryCount: cueMemoryCount,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -7476,6 +9446,7 @@ typedef $$PracticeSessionsTableCreateCompanionBuilder =
       Value<int> id,
       required int listId,
       required String mode,
+      Value<String> sessionKind,
       required int totalCount,
       required int correctCount,
       required double accuracy,
@@ -7487,6 +9458,7 @@ typedef $$PracticeSessionsTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int> listId,
       Value<String> mode,
+      Value<String> sessionKind,
       Value<int> totalCount,
       Value<int> correctCount,
       Value<double> accuracy,
@@ -7562,6 +9534,11 @@ class $$PracticeSessionsTableFilterComposer
 
   ColumnFilters<String> get mode => $composableBuilder(
     column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sessionKind => $composableBuilder(
+    column: $table.sessionKind,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7658,6 +9635,11 @@ class $$PracticeSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sessionKind => $composableBuilder(
+    column: $table.sessionKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get totalCount => $composableBuilder(
     column: $table.totalCount,
     builder: (column) => ColumnOrderings(column),
@@ -7721,6 +9703,11 @@ class $$PracticeSessionsTableAnnotationComposer
 
   GeneratedColumn<String> get mode =>
       $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<String> get sessionKind => $composableBuilder(
+    column: $table.sessionKind,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get totalCount => $composableBuilder(
     column: $table.totalCount,
@@ -7825,6 +9812,7 @@ class $$PracticeSessionsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> listId = const Value.absent(),
                 Value<String> mode = const Value.absent(),
+                Value<String> sessionKind = const Value.absent(),
                 Value<int> totalCount = const Value.absent(),
                 Value<int> correctCount = const Value.absent(),
                 Value<double> accuracy = const Value.absent(),
@@ -7834,6 +9822,7 @@ class $$PracticeSessionsTableTableManager
                 id: id,
                 listId: listId,
                 mode: mode,
+                sessionKind: sessionKind,
                 totalCount: totalCount,
                 correctCount: correctCount,
                 accuracy: accuracy,
@@ -7845,6 +9834,7 @@ class $$PracticeSessionsTableTableManager
                 Value<int> id = const Value.absent(),
                 required int listId,
                 required String mode,
+                Value<String> sessionKind = const Value.absent(),
                 required int totalCount,
                 required int correctCount,
                 required double accuracy,
@@ -7854,6 +9844,7 @@ class $$PracticeSessionsTableTableManager
                 id: id,
                 listId: listId,
                 mode: mode,
+                sessionKind: sessionKind,
                 totalCount: totalCount,
                 correctCount: correctCount,
                 accuracy: accuracy,
@@ -9326,6 +11317,1486 @@ typedef $$SettingsTableProcessedTableManager =
       Setting,
       PrefetchHooks Function()
     >;
+typedef $$LearningActivityRecordsTableCreateCompanionBuilder =
+    LearningActivityRecordsCompanion Function({
+      Value<int> id,
+      required String activityType,
+      Value<String?> subtype,
+      required String status,
+      required int startedAt,
+      Value<int?> finishedAt,
+      Value<int> questionCount,
+      Value<int> correctCount,
+      Value<double?> accuracy,
+      Value<int> turnCount,
+      Value<int> targetWordUseCount,
+      Value<double?> naturalnessAverage,
+      Value<double?> contextFitAverage,
+      Value<int> skillRunCount,
+      Value<int> involvedWordCount,
+    });
+typedef $$LearningActivityRecordsTableUpdateCompanionBuilder =
+    LearningActivityRecordsCompanion Function({
+      Value<int> id,
+      Value<String> activityType,
+      Value<String?> subtype,
+      Value<String> status,
+      Value<int> startedAt,
+      Value<int?> finishedAt,
+      Value<int> questionCount,
+      Value<int> correctCount,
+      Value<double?> accuracy,
+      Value<int> turnCount,
+      Value<int> targetWordUseCount,
+      Value<double?> naturalnessAverage,
+      Value<double?> contextFitAverage,
+      Value<int> skillRunCount,
+      Value<int> involvedWordCount,
+    });
+
+final class $$LearningActivityRecordsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $LearningActivityRecordsTable,
+          LearningActivityRecord
+        > {
+  $$LearningActivityRecordsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $LearningActivityListsTable,
+    List<LearningActivityList>
+  >
+  _learningActivityListsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.learningActivityLists,
+        aliasName: $_aliasNameGenerator(
+          db.learningActivityRecords.id,
+          db.learningActivityLists.activityId,
+        ),
+      );
+
+  $$LearningActivityListsTableProcessedTableManager
+  get learningActivityListsRefs {
+    final manager = $$LearningActivityListsTableTableManager(
+      $_db,
+      $_db.learningActivityLists,
+    ).filter((f) => f.activityId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _learningActivityListsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $LearningActivityWordsTable,
+    List<LearningActivityWord>
+  >
+  _learningActivityWordsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.learningActivityWords,
+        aliasName: $_aliasNameGenerator(
+          db.learningActivityRecords.id,
+          db.learningActivityWords.activityId,
+        ),
+      );
+
+  $$LearningActivityWordsTableProcessedTableManager
+  get learningActivityWordsRefs {
+    final manager = $$LearningActivityWordsTableTableManager(
+      $_db,
+      $_db.learningActivityWords,
+    ).filter((f) => f.activityId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _learningActivityWordsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$LearningActivityRecordsTableFilterComposer
+    extends Composer<_$AppDatabase, $LearningActivityRecordsTable> {
+  $$LearningActivityRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get activityType => $composableBuilder(
+    column: $table.activityType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subtype => $composableBuilder(
+    column: $table.subtype,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get questionCount => $composableBuilder(
+    column: $table.questionCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get correctCount => $composableBuilder(
+    column: $table.correctCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get accuracy => $composableBuilder(
+    column: $table.accuracy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get turnCount => $composableBuilder(
+    column: $table.turnCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get targetWordUseCount => $composableBuilder(
+    column: $table.targetWordUseCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get naturalnessAverage => $composableBuilder(
+    column: $table.naturalnessAverage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get contextFitAverage => $composableBuilder(
+    column: $table.contextFitAverage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get skillRunCount => $composableBuilder(
+    column: $table.skillRunCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get involvedWordCount => $composableBuilder(
+    column: $table.involvedWordCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> learningActivityListsRefs(
+    Expression<bool> Function($$LearningActivityListsTableFilterComposer f) f,
+  ) {
+    final $$LearningActivityListsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityLists,
+          getReferencedColumn: (t) => t.activityId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityListsTableFilterComposer(
+                $db: $db,
+                $table: $db.learningActivityLists,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<bool> learningActivityWordsRefs(
+    Expression<bool> Function($$LearningActivityWordsTableFilterComposer f) f,
+  ) {
+    final $$LearningActivityWordsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityWords,
+          getReferencedColumn: (t) => t.activityId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityWordsTableFilterComposer(
+                $db: $db,
+                $table: $db.learningActivityWords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$LearningActivityRecordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LearningActivityRecordsTable> {
+  $$LearningActivityRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get activityType => $composableBuilder(
+    column: $table.activityType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subtype => $composableBuilder(
+    column: $table.subtype,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get questionCount => $composableBuilder(
+    column: $table.questionCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get correctCount => $composableBuilder(
+    column: $table.correctCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get accuracy => $composableBuilder(
+    column: $table.accuracy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get turnCount => $composableBuilder(
+    column: $table.turnCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get targetWordUseCount => $composableBuilder(
+    column: $table.targetWordUseCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get naturalnessAverage => $composableBuilder(
+    column: $table.naturalnessAverage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get contextFitAverage => $composableBuilder(
+    column: $table.contextFitAverage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get skillRunCount => $composableBuilder(
+    column: $table.skillRunCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get involvedWordCount => $composableBuilder(
+    column: $table.involvedWordCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LearningActivityRecordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LearningActivityRecordsTable> {
+  $$LearningActivityRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get activityType => $composableBuilder(
+    column: $table.activityType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subtype =>
+      $composableBuilder(column: $table.subtype, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get questionCount => $composableBuilder(
+    column: $table.questionCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get correctCount => $composableBuilder(
+    column: $table.correctCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get accuracy =>
+      $composableBuilder(column: $table.accuracy, builder: (column) => column);
+
+  GeneratedColumn<int> get turnCount =>
+      $composableBuilder(column: $table.turnCount, builder: (column) => column);
+
+  GeneratedColumn<int> get targetWordUseCount => $composableBuilder(
+    column: $table.targetWordUseCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get naturalnessAverage => $composableBuilder(
+    column: $table.naturalnessAverage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get contextFitAverage => $composableBuilder(
+    column: $table.contextFitAverage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get skillRunCount => $composableBuilder(
+    column: $table.skillRunCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get involvedWordCount => $composableBuilder(
+    column: $table.involvedWordCount,
+    builder: (column) => column,
+  );
+
+  Expression<T> learningActivityListsRefs<T extends Object>(
+    Expression<T> Function($$LearningActivityListsTableAnnotationComposer a) f,
+  ) {
+    final $$LearningActivityListsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityLists,
+          getReferencedColumn: (t) => t.activityId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityListsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.learningActivityLists,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> learningActivityWordsRefs<T extends Object>(
+    Expression<T> Function($$LearningActivityWordsTableAnnotationComposer a) f,
+  ) {
+    final $$LearningActivityWordsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.learningActivityWords,
+          getReferencedColumn: (t) => t.activityId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityWordsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.learningActivityWords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$LearningActivityRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LearningActivityRecordsTable,
+          LearningActivityRecord,
+          $$LearningActivityRecordsTableFilterComposer,
+          $$LearningActivityRecordsTableOrderingComposer,
+          $$LearningActivityRecordsTableAnnotationComposer,
+          $$LearningActivityRecordsTableCreateCompanionBuilder,
+          $$LearningActivityRecordsTableUpdateCompanionBuilder,
+          (LearningActivityRecord, $$LearningActivityRecordsTableReferences),
+          LearningActivityRecord,
+          PrefetchHooks Function({
+            bool learningActivityListsRefs,
+            bool learningActivityWordsRefs,
+          })
+        > {
+  $$LearningActivityRecordsTableTableManager(
+    _$AppDatabase db,
+    $LearningActivityRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LearningActivityRecordsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LearningActivityRecordsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LearningActivityRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> activityType = const Value.absent(),
+                Value<String?> subtype = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> startedAt = const Value.absent(),
+                Value<int?> finishedAt = const Value.absent(),
+                Value<int> questionCount = const Value.absent(),
+                Value<int> correctCount = const Value.absent(),
+                Value<double?> accuracy = const Value.absent(),
+                Value<int> turnCount = const Value.absent(),
+                Value<int> targetWordUseCount = const Value.absent(),
+                Value<double?> naturalnessAverage = const Value.absent(),
+                Value<double?> contextFitAverage = const Value.absent(),
+                Value<int> skillRunCount = const Value.absent(),
+                Value<int> involvedWordCount = const Value.absent(),
+              }) => LearningActivityRecordsCompanion(
+                id: id,
+                activityType: activityType,
+                subtype: subtype,
+                status: status,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                questionCount: questionCount,
+                correctCount: correctCount,
+                accuracy: accuracy,
+                turnCount: turnCount,
+                targetWordUseCount: targetWordUseCount,
+                naturalnessAverage: naturalnessAverage,
+                contextFitAverage: contextFitAverage,
+                skillRunCount: skillRunCount,
+                involvedWordCount: involvedWordCount,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String activityType,
+                Value<String?> subtype = const Value.absent(),
+                required String status,
+                required int startedAt,
+                Value<int?> finishedAt = const Value.absent(),
+                Value<int> questionCount = const Value.absent(),
+                Value<int> correctCount = const Value.absent(),
+                Value<double?> accuracy = const Value.absent(),
+                Value<int> turnCount = const Value.absent(),
+                Value<int> targetWordUseCount = const Value.absent(),
+                Value<double?> naturalnessAverage = const Value.absent(),
+                Value<double?> contextFitAverage = const Value.absent(),
+                Value<int> skillRunCount = const Value.absent(),
+                Value<int> involvedWordCount = const Value.absent(),
+              }) => LearningActivityRecordsCompanion.insert(
+                id: id,
+                activityType: activityType,
+                subtype: subtype,
+                status: status,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                questionCount: questionCount,
+                correctCount: correctCount,
+                accuracy: accuracy,
+                turnCount: turnCount,
+                targetWordUseCount: targetWordUseCount,
+                naturalnessAverage: naturalnessAverage,
+                contextFitAverage: contextFitAverage,
+                skillRunCount: skillRunCount,
+                involvedWordCount: involvedWordCount,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$LearningActivityRecordsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                learningActivityListsRefs = false,
+                learningActivityWordsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (learningActivityListsRefs) db.learningActivityLists,
+                    if (learningActivityWordsRefs) db.learningActivityWords,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (learningActivityListsRefs)
+                        await $_getPrefetchedData<
+                          LearningActivityRecord,
+                          $LearningActivityRecordsTable,
+                          LearningActivityList
+                        >(
+                          currentTable: table,
+                          referencedTable:
+                              $$LearningActivityRecordsTableReferences
+                                  ._learningActivityListsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$LearningActivityRecordsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).learningActivityListsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.activityId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (learningActivityWordsRefs)
+                        await $_getPrefetchedData<
+                          LearningActivityRecord,
+                          $LearningActivityRecordsTable,
+                          LearningActivityWord
+                        >(
+                          currentTable: table,
+                          referencedTable:
+                              $$LearningActivityRecordsTableReferences
+                                  ._learningActivityWordsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$LearningActivityRecordsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).learningActivityWordsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.activityId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$LearningActivityRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LearningActivityRecordsTable,
+      LearningActivityRecord,
+      $$LearningActivityRecordsTableFilterComposer,
+      $$LearningActivityRecordsTableOrderingComposer,
+      $$LearningActivityRecordsTableAnnotationComposer,
+      $$LearningActivityRecordsTableCreateCompanionBuilder,
+      $$LearningActivityRecordsTableUpdateCompanionBuilder,
+      (LearningActivityRecord, $$LearningActivityRecordsTableReferences),
+      LearningActivityRecord,
+      PrefetchHooks Function({
+        bool learningActivityListsRefs,
+        bool learningActivityWordsRefs,
+      })
+    >;
+typedef $$LearningActivityListsTableCreateCompanionBuilder =
+    LearningActivityListsCompanion Function({
+      Value<int> id,
+      required int activityId,
+      required int listId,
+    });
+typedef $$LearningActivityListsTableUpdateCompanionBuilder =
+    LearningActivityListsCompanion Function({
+      Value<int> id,
+      Value<int> activityId,
+      Value<int> listId,
+    });
+
+final class $$LearningActivityListsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $LearningActivityListsTable,
+          LearningActivityList
+        > {
+  $$LearningActivityListsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LearningActivityRecordsTable _activityIdTable(_$AppDatabase db) =>
+      db.learningActivityRecords.createAlias(
+        $_aliasNameGenerator(
+          db.learningActivityLists.activityId,
+          db.learningActivityRecords.id,
+        ),
+      );
+
+  $$LearningActivityRecordsTableProcessedTableManager get activityId {
+    final $_column = $_itemColumn<int>('activity_id')!;
+
+    final manager = $$LearningActivityRecordsTableTableManager(
+      $_db,
+      $_db.learningActivityRecords,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_activityIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $WordListsTable _listIdTable(_$AppDatabase db) =>
+      db.wordLists.createAlias(
+        $_aliasNameGenerator(db.learningActivityLists.listId, db.wordLists.id),
+      );
+
+  $$WordListsTableProcessedTableManager get listId {
+    final $_column = $_itemColumn<int>('list_id')!;
+
+    final manager = $$WordListsTableTableManager(
+      $_db,
+      $_db.wordLists,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_listIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$LearningActivityListsTableFilterComposer
+    extends Composer<_$AppDatabase, $LearningActivityListsTable> {
+  $$LearningActivityListsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LearningActivityRecordsTableFilterComposer get activityId {
+    final $$LearningActivityRecordsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.activityId,
+          referencedTable: $db.learningActivityRecords,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityRecordsTableFilterComposer(
+                $db: $db,
+                $table: $db.learningActivityRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$WordListsTableFilterComposer get listId {
+    final $$WordListsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.listId,
+      referencedTable: $db.wordLists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WordListsTableFilterComposer(
+            $db: $db,
+            $table: $db.wordLists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LearningActivityListsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LearningActivityListsTable> {
+  $$LearningActivityListsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LearningActivityRecordsTableOrderingComposer get activityId {
+    final $$LearningActivityRecordsTableOrderingComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.activityId,
+          referencedTable: $db.learningActivityRecords,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityRecordsTableOrderingComposer(
+                $db: $db,
+                $table: $db.learningActivityRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$WordListsTableOrderingComposer get listId {
+    final $$WordListsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.listId,
+      referencedTable: $db.wordLists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WordListsTableOrderingComposer(
+            $db: $db,
+            $table: $db.wordLists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LearningActivityListsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LearningActivityListsTable> {
+  $$LearningActivityListsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  $$LearningActivityRecordsTableAnnotationComposer get activityId {
+    final $$LearningActivityRecordsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.activityId,
+          referencedTable: $db.learningActivityRecords,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityRecordsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.learningActivityRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$WordListsTableAnnotationComposer get listId {
+    final $$WordListsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.listId,
+      referencedTable: $db.wordLists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WordListsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.wordLists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LearningActivityListsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LearningActivityListsTable,
+          LearningActivityList,
+          $$LearningActivityListsTableFilterComposer,
+          $$LearningActivityListsTableOrderingComposer,
+          $$LearningActivityListsTableAnnotationComposer,
+          $$LearningActivityListsTableCreateCompanionBuilder,
+          $$LearningActivityListsTableUpdateCompanionBuilder,
+          (LearningActivityList, $$LearningActivityListsTableReferences),
+          LearningActivityList,
+          PrefetchHooks Function({bool activityId, bool listId})
+        > {
+  $$LearningActivityListsTableTableManager(
+    _$AppDatabase db,
+    $LearningActivityListsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LearningActivityListsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LearningActivityListsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LearningActivityListsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> activityId = const Value.absent(),
+                Value<int> listId = const Value.absent(),
+              }) => LearningActivityListsCompanion(
+                id: id,
+                activityId: activityId,
+                listId: listId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int activityId,
+                required int listId,
+              }) => LearningActivityListsCompanion.insert(
+                id: id,
+                activityId: activityId,
+                listId: listId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$LearningActivityListsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({activityId = false, listId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (activityId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.activityId,
+                                referencedTable:
+                                    $$LearningActivityListsTableReferences
+                                        ._activityIdTable(db),
+                                referencedColumn:
+                                    $$LearningActivityListsTableReferences
+                                        ._activityIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (listId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.listId,
+                                referencedTable:
+                                    $$LearningActivityListsTableReferences
+                                        ._listIdTable(db),
+                                referencedColumn:
+                                    $$LearningActivityListsTableReferences
+                                        ._listIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$LearningActivityListsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LearningActivityListsTable,
+      LearningActivityList,
+      $$LearningActivityListsTableFilterComposer,
+      $$LearningActivityListsTableOrderingComposer,
+      $$LearningActivityListsTableAnnotationComposer,
+      $$LearningActivityListsTableCreateCompanionBuilder,
+      $$LearningActivityListsTableUpdateCompanionBuilder,
+      (LearningActivityList, $$LearningActivityListsTableReferences),
+      LearningActivityList,
+      PrefetchHooks Function({bool activityId, bool listId})
+    >;
+typedef $$LearningActivityWordsTableCreateCompanionBuilder =
+    LearningActivityWordsCompanion Function({
+      Value<int> id,
+      required int activityId,
+      required int wordId,
+      Value<int> usageCount,
+      Value<int> errorCount,
+    });
+typedef $$LearningActivityWordsTableUpdateCompanionBuilder =
+    LearningActivityWordsCompanion Function({
+      Value<int> id,
+      Value<int> activityId,
+      Value<int> wordId,
+      Value<int> usageCount,
+      Value<int> errorCount,
+    });
+
+final class $$LearningActivityWordsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $LearningActivityWordsTable,
+          LearningActivityWord
+        > {
+  $$LearningActivityWordsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LearningActivityRecordsTable _activityIdTable(_$AppDatabase db) =>
+      db.learningActivityRecords.createAlias(
+        $_aliasNameGenerator(
+          db.learningActivityWords.activityId,
+          db.learningActivityRecords.id,
+        ),
+      );
+
+  $$LearningActivityRecordsTableProcessedTableManager get activityId {
+    final $_column = $_itemColumn<int>('activity_id')!;
+
+    final manager = $$LearningActivityRecordsTableTableManager(
+      $_db,
+      $_db.learningActivityRecords,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_activityIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $WordsTable _wordIdTable(_$AppDatabase db) => db.words.createAlias(
+    $_aliasNameGenerator(db.learningActivityWords.wordId, db.words.id),
+  );
+
+  $$WordsTableProcessedTableManager get wordId {
+    final $_column = $_itemColumn<int>('word_id')!;
+
+    final manager = $$WordsTableTableManager(
+      $_db,
+      $_db.words,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_wordIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$LearningActivityWordsTableFilterComposer
+    extends Composer<_$AppDatabase, $LearningActivityWordsTable> {
+  $$LearningActivityWordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get usageCount => $composableBuilder(
+    column: $table.usageCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get errorCount => $composableBuilder(
+    column: $table.errorCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LearningActivityRecordsTableFilterComposer get activityId {
+    final $$LearningActivityRecordsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.activityId,
+          referencedTable: $db.learningActivityRecords,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityRecordsTableFilterComposer(
+                $db: $db,
+                $table: $db.learningActivityRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$WordsTableFilterComposer get wordId {
+    final $$WordsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.wordId,
+      referencedTable: $db.words,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WordsTableFilterComposer(
+            $db: $db,
+            $table: $db.words,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LearningActivityWordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LearningActivityWordsTable> {
+  $$LearningActivityWordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get usageCount => $composableBuilder(
+    column: $table.usageCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get errorCount => $composableBuilder(
+    column: $table.errorCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LearningActivityRecordsTableOrderingComposer get activityId {
+    final $$LearningActivityRecordsTableOrderingComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.activityId,
+          referencedTable: $db.learningActivityRecords,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityRecordsTableOrderingComposer(
+                $db: $db,
+                $table: $db.learningActivityRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$WordsTableOrderingComposer get wordId {
+    final $$WordsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.wordId,
+      referencedTable: $db.words,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WordsTableOrderingComposer(
+            $db: $db,
+            $table: $db.words,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LearningActivityWordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LearningActivityWordsTable> {
+  $$LearningActivityWordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get usageCount => $composableBuilder(
+    column: $table.usageCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get errorCount => $composableBuilder(
+    column: $table.errorCount,
+    builder: (column) => column,
+  );
+
+  $$LearningActivityRecordsTableAnnotationComposer get activityId {
+    final $$LearningActivityRecordsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.activityId,
+          referencedTable: $db.learningActivityRecords,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$LearningActivityRecordsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.learningActivityRecords,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$WordsTableAnnotationComposer get wordId {
+    final $$WordsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.wordId,
+      referencedTable: $db.words,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$WordsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.words,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LearningActivityWordsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LearningActivityWordsTable,
+          LearningActivityWord,
+          $$LearningActivityWordsTableFilterComposer,
+          $$LearningActivityWordsTableOrderingComposer,
+          $$LearningActivityWordsTableAnnotationComposer,
+          $$LearningActivityWordsTableCreateCompanionBuilder,
+          $$LearningActivityWordsTableUpdateCompanionBuilder,
+          (LearningActivityWord, $$LearningActivityWordsTableReferences),
+          LearningActivityWord,
+          PrefetchHooks Function({bool activityId, bool wordId})
+        > {
+  $$LearningActivityWordsTableTableManager(
+    _$AppDatabase db,
+    $LearningActivityWordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LearningActivityWordsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LearningActivityWordsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LearningActivityWordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> activityId = const Value.absent(),
+                Value<int> wordId = const Value.absent(),
+                Value<int> usageCount = const Value.absent(),
+                Value<int> errorCount = const Value.absent(),
+              }) => LearningActivityWordsCompanion(
+                id: id,
+                activityId: activityId,
+                wordId: wordId,
+                usageCount: usageCount,
+                errorCount: errorCount,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int activityId,
+                required int wordId,
+                Value<int> usageCount = const Value.absent(),
+                Value<int> errorCount = const Value.absent(),
+              }) => LearningActivityWordsCompanion.insert(
+                id: id,
+                activityId: activityId,
+                wordId: wordId,
+                usageCount: usageCount,
+                errorCount: errorCount,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$LearningActivityWordsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({activityId = false, wordId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (activityId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.activityId,
+                                referencedTable:
+                                    $$LearningActivityWordsTableReferences
+                                        ._activityIdTable(db),
+                                referencedColumn:
+                                    $$LearningActivityWordsTableReferences
+                                        ._activityIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (wordId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.wordId,
+                                referencedTable:
+                                    $$LearningActivityWordsTableReferences
+                                        ._wordIdTable(db),
+                                referencedColumn:
+                                    $$LearningActivityWordsTableReferences
+                                        ._wordIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$LearningActivityWordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LearningActivityWordsTable,
+      LearningActivityWord,
+      $$LearningActivityWordsTableFilterComposer,
+      $$LearningActivityWordsTableOrderingComposer,
+      $$LearningActivityWordsTableAnnotationComposer,
+      $$LearningActivityWordsTableCreateCompanionBuilder,
+      $$LearningActivityWordsTableUpdateCompanionBuilder,
+      (LearningActivityWord, $$LearningActivityWordsTableReferences),
+      LearningActivityWord,
+      PrefetchHooks Function({bool activityId, bool wordId})
+    >;
 typedef $$TtsUsageRecordsTableCreateCompanionBuilder =
     TtsUsageRecordsCompanion Function({
       Value<int> id,
@@ -10087,6 +13558,15 @@ class $AppDatabaseManager {
       $$AiContentTableTableManager(_db, _db.aiContent);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$LearningActivityRecordsTableTableManager get learningActivityRecords =>
+      $$LearningActivityRecordsTableTableManager(
+        _db,
+        _db.learningActivityRecords,
+      );
+  $$LearningActivityListsTableTableManager get learningActivityLists =>
+      $$LearningActivityListsTableTableManager(_db, _db.learningActivityLists);
+  $$LearningActivityWordsTableTableManager get learningActivityWords =>
+      $$LearningActivityWordsTableTableManager(_db, _db.learningActivityWords);
   $$TtsUsageRecordsTableTableManager get ttsUsageRecords =>
       $$TtsUsageRecordsTableTableManager(_db, _db.ttsUsageRecords);
   $$TtsCacheRecordsTableTableManager get ttsCacheRecords =>

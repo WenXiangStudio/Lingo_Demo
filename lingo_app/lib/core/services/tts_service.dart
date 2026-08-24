@@ -10,12 +10,14 @@ import '../../data/database/app_database.dart';
 import '../../data/repositories/repositories.dart';
 import '../data_dir.dart';
 import '../utils/text_normalizer.dart';
+import '../utils/wav_playback_preroll.dart';
+import 'remote_example_audio_client.dart';
+import 'remote_word_audio_client.dart';
 import 'tts_adapters/doubao_tts_adapter.dart';
 import 'tts_adapters/openai_tts_adapter.dart';
+import 'tts_adapters/qwen3_tts_adapter.dart';
 import 'tts_adapters/qwen_tts_adapter.dart';
-import 'tts_engines/sapi_tts_engine.dart';
-import 'tts_engines/supertonic_tts_engine.dart';
-import 'tts_model_manager.dart';
+import 'tts_adapters/tencent_tts_adapter.dart';
 import 'tts_provider.dart';
 
 class TtsPreCacheItem {
@@ -56,6 +58,18 @@ class TtsPreCacheProgress {
   });
 }
 
+class TtsPreCacheFailure {
+  final String text;
+  final String message;
+  final QwenWordAudioValidationFailure? audioValidationFailure;
+
+  const TtsPreCacheFailure({
+    required this.text,
+    required this.message,
+    this.audioValidationFailure,
+  });
+}
+
 class TtsPreCacheResult {
   final int total;
   final int success;
@@ -65,7 +79,7 @@ class TtsPreCacheResult {
   final int chargedCharacters;
   final int audioBytes;
   final bool cancelled;
-  final List<String> failedItems;
+  final List<TtsPreCacheFailure> failedItems;
 
   const TtsPreCacheResult({
     required this.total,
@@ -135,23 +149,72 @@ class TtsCacheCleanupResult {
   });
 }
 
-/// Orchestrates TTS across multiple engines: Supertonic (on-device),
-/// SAPI (Windows system), and cloud TtsProvider adapters.
+class TtsCacheLimitResult {
+  final int limitBytes;
+  final int beforeBytes;
+  final int afterBytes;
+  final int removedFiles;
+  final int removedRecords;
+
+  const TtsCacheLimitResult({
+    required this.limitBytes,
+    required this.beforeBytes,
+    required this.afterBytes,
+    required this.removedFiles,
+    required this.removedRecords,
+  });
+
+  int get removedBytes => beforeBytes - afterBytes;
+  bool get isUnlimited => limitBytes <= 0;
+}
+
+class _TtsCacheFileCandidate {
+  final File file;
+  final int length;
+  final DateTime lastModified;
+
+  const _TtsCacheFileCandidate({
+    required this.file,
+    required this.length,
+    required this.lastModified,
+  });
+}
+
+/// Orchestrates cloud TTS generation, persistent audio caching, and playback.
+/// Dictionary words default to pre-generated static WAV playback; direct cloud
+/// playback is an explicit development-only choice.
 ///
 /// Usage:
 /// ```dart
-/// final tts = TtsService(settingsRepo: repo, modelManager: manager);
+/// final tts = TtsService(settingsRepo: repo);
 /// await tts.init();
 /// await tts.speak('Hello');
 /// ```
 class TtsService {
-  final SettingsRepository _settingsRepo;
-  final TtsModelManager _modelManager;
-  final TtsRepository? _ttsRepo;
+  static const Duration _windowsWavPlaybackPreRoll = Duration(
+    milliseconds: 210,
+  );
+  static const String qwenCacheLimitSettingKey = 'tts_qwen_cache_limit_mb';
+  static const int defaultQwenCacheLimitMb = 0;
+  static const String remoteWordPlaybackSource = 'remote';
+  static const String configuredTtsWordPlaybackSource = 'configured_tts';
+  static const String remoteExamplePlaybackSource = 'remote';
+  static const String configuredTtsExamplePlaybackSource = 'configured_tts';
+  static const String qwen3FlashKaterinaProvider =
+      Qwen3TtsAdapter.flashKaterinaProviderId;
+  static const String tencentWeWinnyProvider =
+      TencentTtsAdapter.weWinnyProviderId;
+  static const String tencentWeJackProvider =
+      TencentTtsAdapter.weJackProviderId;
+  static const String remoteTencentWeWinnyExamplePlaybackSource =
+      'remote_tencent_wewinny';
 
-  SupertonicTtsEngine? _supertonic;
-  SapiTtsEngine? _sapi;
+  final SettingsRepository _settingsRepo;
+  final TtsRepository? _ttsRepo;
+  final Future<Directory> Function() _dataDirProvider;
+
   TtsProvider? _cloudProvider;
+  TtsProvider? _wordProvider;
   Directory? _cacheDir;
   AudioPlayer? _player;
   Completer<void>? _playbackCompleter;
@@ -164,15 +227,15 @@ class TtsService {
 
   TtsService({
     required SettingsRepository settingsRepo,
-    required TtsModelManager modelManager,
     TtsRepository? ttsRepo,
+    Future<Directory> Function()? dataDirProvider,
   }) : _settingsRepo = settingsRepo,
-       _modelManager = modelManager,
-       _ttsRepo = ttsRepo;
+       _ttsRepo = ttsRepo,
+       _dataDirProvider = dataDirProvider ?? getLingoDataDir;
 
   bool get isReady => _initialized;
 
-  /// Initialise the service: read preferences, create engines, set up cache.
+  /// Initialise cloud adapters and the persistent audio cache.
   ///
   /// Call once after construction. Safe to call again after [dispose].
   Future<void> init() {
@@ -192,32 +255,13 @@ class TtsService {
   Future<void> _initInternal() async {
     if (_initialized) return;
     try {
-      _player = AudioPlayer();
+      await _ensurePlaybackPlayer();
 
       try {
         await _ensureCacheDir();
       } catch (_) {}
 
-      // Initialise Windows SAPI engine (zero-cost, always available on Windows)
-      if (Platform.isWindows) {
-        _sapi = SapiTtsEngine();
-      }
-
-      // If Supertonic model is already downloaded, pre-load the engine
-      final provider = await _settingsRepo.getTtsProvider() ?? 'sapi';
-      if (provider == 'supertonic' && await _modelManager.isModelReady()) {
-        try {
-          await _initSupertonic();
-        } catch (_) {}
-      }
-
-      // Wire up cloud TTS adapter
-      if (provider == 'qwen' || provider == 'openai' || provider == 'doubao') {
-        await _initCloudProvider();
-      }
-      if (_sapi != null) {
-        _sapi!.speed = await _settingsRepo.getTtsSpeed();
-      }
+      await _initCloudProvider();
 
       _initialized = true;
       _initFuture = null;
@@ -228,12 +272,7 @@ class TtsService {
     }
   }
 
-  /// Speak [text] using the configured TTS engine.
-  ///
-  /// Routes to Supertonic, cloud, or SAPI based on the user's setting.
-  /// Falls back to SAPI on Windows if the selected engine fails.
-  ///
-  /// Guards against concurrent calls — taps during playback are ignored.
+  /// Speak [text] using the configured cloud provider.
   Future<TtsSpeakResult> speak(String text, {String lang = 'en'}) async {
     if (!await _ensureInitialized()) {
       return const TtsSpeakResult(
@@ -253,25 +292,16 @@ class TtsService {
 
     try {
       final normalizedText = _normalizeCacheText(text);
-      final provider = await _settingsRepo.getTtsProvider() ?? 'sapi';
+      final provider = await _configuredCloudProvider();
 
-      if (provider != 'sapi') {
-        final cached = await _getCachedAudio(normalizedText, lang, provider);
-        if (cached != null) {
-          if (provider == 'supertonic') {
-            await _playWav(cached);
-          } else {
-            await _playAudio(
-              cached,
-              mimeType: _audioMimeTypeForProvider(provider),
-            );
-          }
-          return TtsSpeakResult(
-            provider: provider,
-            source: 'cache',
-            played: true,
-          );
-        }
+      final cached = await _getCachedAudio(normalizedText, lang, provider);
+      if (cached != null) {
+        await _playAudio(cached, mimeType: _audioMimeTypeForProvider(provider));
+        return TtsSpeakResult(
+          provider: provider,
+          source: 'cache',
+          played: true,
+        );
       }
 
       if (provider == 'doubao' && !await _isDoubaoLiveApiEnabled()) {
@@ -283,19 +313,16 @@ class TtsService {
       }
 
       switch (provider) {
-        case 'supertonic':
-          return await _speakViaSupertonic(normalizedText, lang);
         case 'qwen':
+        case qwen3FlashKaterinaProvider:
         case 'openai':
         case 'doubao':
           return await _speakViaCloud(normalizedText, lang);
-        case 'sapi':
         default:
-          await _speakViaSapi(normalizedText);
           return TtsSpeakResult(
             provider: provider,
-            source: 'sapi',
-            played: true,
+            source: 'unsupported_provider',
+            played: false,
           );
       }
     } finally {
@@ -303,207 +330,248 @@ class TtsService {
     }
   }
 
-  /// Speak free-form user text.
+  /// Uses the configured word playback source.
   ///
-  /// Supertonic is less stable when one long paragraph is synthesized in a
-  /// single pass. For that engine, synthesize bounded chunks, stitch the PCM
-  /// samples in memory, and play one WAV. Other providers keep their ordinary
-  /// whole-text path.
-  Future<TtsSpeakResult> speakCustomText(
-    String text, {
-    String lang = 'en',
-  }) async {
-    if (!await _ensureInitialized()) {
-      return const TtsSpeakResult(
-        provider: 'none',
-        source: 'not_ready',
-        played: false,
-      );
-    }
-
-    final provider = await _settingsRepo.getTtsProvider() ?? 'sapi';
-    if (provider != 'supertonic') {
+  /// The default is the pre-generated static WAV server. The user can
+  /// explicitly switch to the currently selected cloud TTS engine for
+  /// development testing; this is never an automatic fallback.
+  Future<TtsSpeakResult> speakWord(String text, {String lang = 'en'}) async {
+    final playbackSource = normalizeWordPlaybackSource(
+      await _settingsRepo.getString(
+        SettingsRepository.keyWordAudioPlaybackSource,
+      ),
+    );
+    if (playbackSource == configuredTtsWordPlaybackSource) {
       return speak(text, lang: lang);
     }
 
-    if (_speaking) {
-      return const TtsSpeakResult(
-        provider: 'none',
-        source: 'blocked',
-        played: false,
-      );
-    }
-    _speaking = true;
+    return _speakWordFromRemoteServer(text, lang: lang);
+  }
 
+  /// Plays a word's stored example sentence from its selected static release
+  /// profile. The fallback to the active TTS engine is a user choice, never
+  /// an automatic API call after a server miss.
+  Future<TtsSpeakResult> speakExampleSentence(
+    String text, {
+    String lang = 'en',
+  }) async {
+    final playbackSource = normalizeExamplePlaybackSource(
+      await _settingsRepo.getString(
+        SettingsRepository.keyExampleAudioPlaybackSource,
+      ),
+    );
+    if (playbackSource == configuredTtsExamplePlaybackSource) {
+      return speak(text, lang: lang);
+    }
+    return _speakExampleFromRemoteServer(text, lang: lang);
+  }
+
+  static String normalizeWordPlaybackSource(String? value) {
+    return value == configuredTtsWordPlaybackSource
+        ? configuredTtsWordPlaybackSource
+        : remoteWordPlaybackSource;
+  }
+
+  static String normalizeExamplePlaybackSource(String? value) {
+    // Existing installations used the active cloud engine for examples before
+    // a static example-audio server existed. Preserve that behaviour until a
+    // user explicitly switches this new setting to the server.
+    return switch (value) {
+      remoteExamplePlaybackSource => remoteExamplePlaybackSource,
+      remoteTencentWeWinnyExamplePlaybackSource =>
+        remoteTencentWeWinnyExamplePlaybackSource,
+      _ => configuredTtsExamplePlaybackSource,
+    };
+  }
+
+  /// Plays a locally validated Qwen word WAV without reading or changing the
+  /// persistent cache. This is used by the repair UI to audition a staged
+  /// candidate before the user accepts it.
+  Future<bool> previewWordAudioBytes(Uint8List bytes) async {
+    if (QwenTtsAdapter.wordAudioValidationFailure(bytes) != null) {
+      return false;
+    }
+    if (!await _ensureInitialized()) return false;
+    if (_speaking) await stop();
+    _speaking = true;
     try {
-      final normalizedText = _normalizeCacheText(text);
-      final cached = await _getCachedAudio(normalizedText, lang, provider);
-      if (cached != null) {
-        await _playWav(cached);
-        return const TtsSpeakResult(
-          provider: 'supertonic',
-          source: 'cache',
-          played: true,
-        );
-      }
-      return await _speakViaSupertonicLongForm(normalizedText, lang);
+      await _playAudio(bytes, mimeType: QwenTtsAdapter.wordAudioMimeType);
+      return true;
+    } catch (_) {
+      return false;
     } finally {
       _speaking = false;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Supertonic
-  // ---------------------------------------------------------------------------
-
-  Future<void> _initSupertonic() async {
-    if (_supertonic?.isInitialized == true) return;
-    final modelDir = await _modelManager.modelDir;
-    _supertonic = SupertonicTtsEngine();
-    await _supertonic!.initialize(modelDir);
-  }
-
-  Future<TtsSpeakResult> _speakViaSupertonic(String text, String lang) async {
-    try {
-      if (_supertonic?.isInitialized != true) {
-        await _initSupertonic();
-      }
-      final speed = await _settingsRepo.getTtsSpeed();
-      // Bare words need an explicit boundary to avoid Supertonic tail noise.
-      final processed = SupertonicTtsEngine.preprocessSingleWord(text);
-      final audio = _supertonic!.synthesize(
-        processed,
-        speed: speed,
-        numSteps: 15,
-        lang: lang,
-      );
-      final cleaned = SupertonicTtsEngine.applyTailFadeOut(
-        audio.samples,
-        audio.sampleRate,
-        fadeDurationMs: 80,
-      );
-      final wavBytes = await _supertonic!.samplesToWav(cleaned);
-      // Cache with original text as key (not processed) for correct lookup
-      await _cacheAudio(text, lang, 'supertonic', wavBytes);
-      await _playWav(wavBytes);
+  /// Fetches and memory-plays a dictionary word from the static WAV server.
+  /// This path intentionally never invokes Qwen and never reads or writes a
+  /// persistent audio file on the device.
+  Future<TtsSpeakResult> _speakWordFromRemoteServer(
+    String text, {
+    required String lang,
+  }) async {
+    if (!await _ensureInitialized()) {
       return const TtsSpeakResult(
-        provider: 'supertonic',
-        source: 'api',
-        played: true,
-      );
-    } catch (e) {
-      if (_sapi?.isAvailable == true) {
-        await _speakViaSapi(text);
-        return TtsSpeakResult(
-          provider: 'sapi',
-          source: 'fallback_sapi',
-          played: true,
-          message: _shortError(e),
-        );
-      }
-      return TtsSpeakResult(
-        provider: 'supertonic',
-        source: 'failed',
+        provider: 'remote_word_audio',
+        source: 'not_ready',
         played: false,
-        message: _shortError(e),
       );
     }
-  }
+    if (_speaking) await stop();
+    _speaking = true;
 
-  Future<TtsSpeakResult> _speakViaSupertonicLongForm(
-    String text,
-    String lang,
-  ) async {
     try {
-      if (_supertonic?.isInitialized != true) {
-        await _initSupertonic();
-      }
-      final chunks = SupertonicTtsEngine.splitLongFormText(text);
-      if (chunks.isEmpty) {
+      final normalizedText = _normalizeCacheText(text).trim();
+      if (normalizedText.isEmpty) {
         return const TtsSpeakResult(
-          provider: 'supertonic',
+          provider: 'remote_word_audio',
           source: 'empty',
           played: false,
         );
       }
 
-      final sampleChunks = <Float32List>[];
-      for (final chunk in chunks) {
-        final audio = _supertonic!.synthesize(
-          chunk,
-          speed: SupertonicTtsEngine.longFormSpeed,
-          numSteps: SupertonicTtsEngine.longFormNumSteps,
-          lang: lang,
+      final baseUrl =
+          await _settingsRepo.getString(
+            SettingsRepository.keyRemoteWordAudioBaseUrl,
+          ) ??
+          '';
+      try {
+        final audioBytes = await RemoteWordAudioClient(
+          baseUrl: baseUrl,
+        ).fetch(normalizedText, language: lang);
+        await _playAudio(
+          audioBytes,
+          mimeType: RemoteWordAudioClient.wavMimeType,
         );
-        // Keep the synthesized tail intact here. The earlier silence trim and
-        // fade-out were shaving off the final consonant on sentence playback.
-        sampleChunks.add(audio.samples);
-      }
-
-      final samples = SupertonicTtsEngine.concatenateWithSilence(
-        sampleChunks,
-        _supertonic!.sampleRate,
-      );
-      final wavBytes = await _supertonic!.samplesToWav(samples);
-      await _cacheAudio(text, lang, 'supertonic', wavBytes);
-      await _playWav(wavBytes);
-      return TtsSpeakResult(
-        provider: 'supertonic',
-        source: chunks.length == 1 ? 'api' : 'api_long_form',
-        played: true,
-      );
-    } catch (e) {
-      if (_sapi?.isAvailable == true) {
-        await _speakViaSapi(text);
-        return TtsSpeakResult(
-          provider: 'sapi',
-          source: 'fallback_sapi',
+        return const TtsSpeakResult(
+          provider: 'remote_word_audio',
+          source: 'remote',
           played: true,
-          message: _shortError(e),
+        );
+      } on RemoteWordAudioException catch (error) {
+        return TtsSpeakResult(
+          provider: 'remote_word_audio',
+          source: error.source,
+          played: false,
+        );
+      } catch (_) {
+        return const TtsSpeakResult(
+          provider: 'remote_word_audio',
+          source: 'remote_unavailable',
+          played: false,
         );
       }
-      return TtsSpeakResult(
-        provider: 'supertonic',
-        source: 'failed',
-        played: false,
-        message: _shortError(e),
-      );
+    } finally {
+      _speaking = false;
     }
   }
+
+  /// Fetches and memory-plays an immutable example sentence from the selected
+  /// static server profile. It intentionally never reads/writes the local
+  /// cache and does not fall back to a cloud API if a release is incomplete.
+  Future<TtsSpeakResult> _speakExampleFromRemoteServer(
+    String text, {
+    required String lang,
+  }) async {
+    if (!await _ensureInitialized()) {
+      return const TtsSpeakResult(
+        provider: 'remote_example_audio',
+        source: 'not_ready',
+        played: false,
+      );
+    }
+    if (_speaking) await stop();
+    _speaking = true;
+
+    try {
+      final playbackSource = normalizeExamplePlaybackSource(
+        await _settingsRepo.getString(
+          SettingsRepository.keyExampleAudioPlaybackSource,
+        ),
+      );
+      final isTencentExample =
+          playbackSource == remoteTencentWeWinnyExamplePlaybackSource;
+      final profile = isTencentExample
+          ? RemoteExampleAudioProfile.tencentWeJack
+          : RemoteExampleAudioProfile.qwen3;
+      final remoteProvider = isTencentExample
+          ? 'remote_tencent_wewinny_example_audio'
+          : 'remote_example_audio';
+      final normalizedText = RemoteExampleAudioClient.normalizeText(text);
+      if (normalizedText.isEmpty) {
+        return TtsSpeakResult(
+          provider: remoteProvider,
+          source: 'empty',
+          played: false,
+        );
+      }
+      final baseUrl =
+          await _settingsRepo.getString(
+            SettingsRepository.keyRemoteWordAudioBaseUrl,
+          ) ??
+          '';
+      try {
+        final audioBytes = await RemoteExampleAudioClient(
+          baseUrl: baseUrl,
+          profile: profile,
+        ).fetch(normalizedText, language: lang);
+        await _playAudio(
+          audioBytes,
+          mimeType: RemoteExampleAudioClient.wavMimeType,
+        );
+        return TtsSpeakResult(
+          provider: remoteProvider,
+          source: 'remote',
+          played: true,
+        );
+      } on RemoteExampleAudioException catch (error) {
+        return TtsSpeakResult(
+          provider: remoteProvider,
+          source: error.source,
+          played: false,
+        );
+      } catch (_) {
+        return TtsSpeakResult(
+          provider: remoteProvider,
+          source: 'remote_example_unavailable',
+          played: false,
+        );
+      }
+    } finally {
+      _speaking = false;
+    }
+  }
+
+  /// Free-form text remains cloud-only. Long-form streaming is a later phase.
+  Future<TtsSpeakResult> speakCustomText(String text, {String lang = 'en'}) =>
+      speak(text, lang: lang);
 
   // ---------------------------------------------------------------------------
   // Cloud TTS (OpenAI, etc.)
   // ---------------------------------------------------------------------------
 
-  Future<TtsSpeakResult> _speakViaCloud(String text, String lang) async {
-    final provider = await _settingsRepo.getTtsProvider() ?? 'qwen';
-    if (_cloudProvider == null) {
-      if (provider == 'doubao') {
-        return const TtsSpeakResult(
-          provider: 'doubao',
-          source: 'not_configured',
-          played: false,
-        );
-      }
-      if (_sapi?.isAvailable == true) {
-        await _speakViaSapi(text);
-        return const TtsSpeakResult(
-          provider: 'sapi',
-          source: 'fallback_sapi',
-          played: true,
-        );
-      }
+  Future<TtsSpeakResult> _speakViaCloud(
+    String text,
+    String lang, {
+    String? providerOverride,
+    TtsProvider? cloudProviderOverride,
+  }) async {
+    final provider = providerOverride ?? await _configuredCloudProvider();
+    final cloudProvider = cloudProviderOverride ?? _cloudProvider;
+    if (cloudProvider == null) {
       return TtsSpeakResult(
         provider: provider,
-        source: 'failed',
+        source: 'not_configured',
         played: false,
       );
     }
     try {
-      final result = await _synthesizeCloudWithMetadata(
-        _cloudProvider!,
+      final result = await _synthesizeWithQwenWordFallback(
+        cloudProvider,
         text,
         lang,
+        providerType: provider,
       );
       await _cacheAudio(text, lang, provider, result.audioBytes);
       await _recordUsage(
@@ -543,25 +611,11 @@ class TtsService {
         status: 'failed',
         errorMessage: _shortError(e),
       );
-      if (provider == 'doubao') {
-        return const TtsSpeakResult(
-          provider: 'doubao',
-          source: 'api_failed',
-          played: false,
-        );
-      }
-      if (_sapi?.isAvailable == true) {
-        await _speakViaSapi(text);
-        return const TtsSpeakResult(
-          provider: 'sapi',
-          source: 'fallback_sapi',
-          played: true,
-        );
-      }
       return TtsSpeakResult(
         provider: provider,
-        source: 'failed',
+        source: 'api_failed',
         played: false,
+        message: _shortError(e),
       );
     }
   }
@@ -584,10 +638,15 @@ class TtsService {
       throw Exception('Another TTS request is already running');
     }
     _speaking = true;
-    _player ??= AudioPlayer();
+    await _ensurePlaybackPlayer();
 
     try {
-      if (provider != 'qwen' && provider != 'openai' && provider != 'doubao') {
+      if (provider != 'qwen' &&
+          provider != qwen3FlashKaterinaProvider &&
+          provider != tencentWeWinnyProvider &&
+          provider != tencentWeJackProvider &&
+          provider != 'openai' &&
+          provider != 'doubao') {
         throw Exception(
           'Selected TTS provider is not a cloud provider: $provider',
         );
@@ -664,11 +723,16 @@ class TtsService {
     var chargedCharacters = 0;
     var audioBytes = 0;
     var cancelled = false;
-    final failedItems = <String>[];
+    final failedItems = <TtsPreCacheFailure>[];
 
     try {
       await _ensureCacheDir();
-      if (provider != 'qwen' && provider != 'openai' && provider != 'doubao') {
+      if (provider != 'qwen' &&
+          provider != qwen3FlashKaterinaProvider &&
+          provider != tencentWeWinnyProvider &&
+          provider != tencentWeJackProvider &&
+          provider != 'openai' &&
+          provider != 'doubao') {
         throw Exception(
           'Selected TTS provider is not a cloud provider: $provider',
         );
@@ -681,6 +745,9 @@ class TtsService {
         model: model,
         voice: voice,
         resourceId: resourceId,
+        instruction: provider == 'qwen' && lang.trim().toLowerCase() == 'en'
+            ? QwenTtsAdapter.wordInstruction
+            : null,
       );
       if (cloudProvider == null) {
         throw Exception('Cloud TTS is not configured: $provider');
@@ -716,9 +783,16 @@ class TtsService {
           Object? lastError;
           for (var attempt = 0; attempt <= maxRetries; attempt++) {
             try {
+              final synthesisText = _preCacheSynthesisText(
+                provider,
+                text,
+                lang,
+                attempt,
+              );
+              apiCalls++;
               final result = await _synthesizeCloudWithMetadata(
                 cloudProvider,
-                text,
+                synthesisText,
                 lang,
               );
               await _cacheAudio(text, lang, provider, result.audioBytes);
@@ -738,7 +812,6 @@ class TtsService {
                 audioBytes: result.audioBytes.length,
                 chargedCharacters: result.chargedCharacters,
               );
-              apiCalls++;
               chargedCharacters += result.chargedCharacters ?? 0;
               audioBytes += result.audioBytes.length;
               lastError = null;
@@ -746,17 +819,26 @@ class TtsService {
               break;
             } catch (e) {
               lastError = e;
-              if (attempt < maxRetries) {
-                await Future.delayed(
-                  Duration(milliseconds: 500 * (attempt + 1)),
-                );
+              if (attempt < maxRetries && _isPreCacheRetryable(provider, e)) {
+                await Future.delayed(_preCacheRetryDelay(provider, attempt));
+              } else {
+                break;
               }
             }
           }
           if (lastError != null) {
             failed++;
             final errorMessage = _shortError(lastError);
-            failedItems.add('$text: $errorMessage');
+            failedItems.add(
+              TtsPreCacheFailure(
+                text: text,
+                message: errorMessage,
+                audioValidationFailure:
+                    lastError is QwenWordAudioValidationException
+                    ? lastError.failure
+                    : null,
+              ),
+            );
             await _recordUsage(
               provider: provider,
               action: 'precache',
@@ -813,15 +895,17 @@ class TtsService {
   }
 
   Future<void> _initCloudProvider() async {
-    final provider = await _settingsRepo.getTtsProvider() ?? '';
-    final ns = provider;
+    final provider = await _configuredCloudProvider();
+    final ns = _settingsNamespaceForProvider(provider);
     final apiKey = await _settingsRepo.getString('tts_${ns}_api_key');
     final baseUrl =
         (await _settingsRepo.getString('tts_${ns}_base_url'))?.trim() ?? '';
-    final voice =
-        (await _settingsRepo.getString('tts_${ns}_voice'))?.trim() ?? '';
-    final model =
-        (await _settingsRepo.getString('tts_${ns}_model'))?.trim() ?? '';
+    final voice = provider == qwen3FlashKaterinaProvider
+        ? Qwen3TtsAdapter.flashVoice
+        : (await _settingsRepo.getString('tts_${ns}_voice'))?.trim() ?? '';
+    final model = provider == qwen3FlashKaterinaProvider
+        ? Qwen3TtsAdapter.flashModel
+        : (await _settingsRepo.getString('tts_${ns}_model'))?.trim() ?? '';
     final resourceId =
         (await _settingsRepo.getString('tts_${ns}_app_id'))?.trim() ?? '';
 
@@ -835,6 +919,43 @@ class TtsService {
     );
   }
 
+  Future<String> _configuredCloudProvider() async {
+    final provider = await _settingsRepo.getTtsProvider();
+    return provider == 'qwen' ||
+            provider == qwen3FlashKaterinaProvider ||
+            provider == 'openai' ||
+            provider == 'doubao'
+        ? provider!
+        : 'qwen';
+  }
+
+  static String _settingsNamespaceForProvider(String provider) {
+    // The legacy word profile and the new Qwen3 Flash profile use the same
+    // DashScope API credentials, while model/voice/cache identities stay
+    // separate. This avoids copying or overwriting the approved word preset.
+    return provider == qwen3FlashKaterinaProvider ? 'qwen' : provider;
+  }
+
+  Future<void> _initWordProvider({required String language}) async {
+    final apiKey =
+        (await _settingsRepo.getString('tts_qwen_api_key'))?.trim() ?? '';
+    final baseUrl =
+        (await _settingsRepo.getString('tts_qwen_base_url'))?.trim() ?? '';
+    final workspaceId =
+        (await _settingsRepo.getString('tts_qwen_app_id'))?.trim() ?? '';
+    _wordProvider = _createCloudProvider(
+      provider: 'qwen',
+      apiKey: apiKey,
+      baseUrl: baseUrl,
+      model: QwenTtsAdapter.wordModel,
+      voice: QwenTtsAdapter.wordVoice,
+      resourceId: workspaceId,
+      instruction: language.trim().toLowerCase() == 'en'
+          ? QwenTtsAdapter.wordInstruction
+          : null,
+    );
+  }
+
   TtsProvider? _createCloudProvider({
     required String provider,
     required String apiKey,
@@ -842,20 +963,54 @@ class TtsService {
     required String model,
     required String voice,
     required String resourceId,
+    String? instruction,
   }) {
+    if (provider == tencentWeWinnyProvider ||
+        provider == tencentWeJackProvider) {
+      final useWeJack = provider == tencentWeJackProvider;
+      return TencentTtsAdapter.fromEnvironment(
+        endpoint: baseUrl.trim().isEmpty
+            ? TencentTtsAdapter.defaultEndpoint
+            : baseUrl.trim(),
+        region: resourceId.trim().isEmpty
+            ? TencentTtsAdapter.defaultRegion
+            : resourceId.trim(),
+        voiceType: useWeJack
+            ? TencentTtsAdapter.weJackVoiceType
+            : TencentTtsAdapter.weWinnyVoiceType,
+        sampleRate: useWeJack
+            ? TencentTtsAdapter.weJackSampleRate
+            : TencentTtsAdapter.weWinnySampleRate,
+      );
+    }
     if (apiKey.trim().isEmpty) {
       return null;
     }
 
     switch (provider) {
       case 'qwen':
+        if (resourceId.trim().isEmpty) return null;
         return QwenTtsAdapter(
           apiKey: apiKey,
-          baseUrl: baseUrl.isNotEmpty
-              ? baseUrl
-              : 'https://dashscope.aliyuncs.com',
-          model: model.isNotEmpty ? model : 'qwen3-tts-flash',
-          voice: voice.isNotEmpty ? voice : 'Jennifer',
+          workspaceId: resourceId,
+          baseUrl: baseUrl,
+          model: QwenTtsAdapter.wordModel,
+          voice: QwenTtsAdapter.wordVoice,
+          audioFormat: QwenTtsAdapter.wordAudioFormat,
+          sampleRate: QwenTtsAdapter.wordSampleRate,
+          volume: QwenTtsAdapter.wordVolume,
+          rate: QwenTtsAdapter.wordRate,
+          pitch: QwenTtsAdapter.wordPitch,
+          seed: QwenTtsAdapter.wordSeed,
+          instruction: instruction,
+        );
+      case qwen3FlashKaterinaProvider:
+        return Qwen3TtsAdapter(
+          apiKey: apiKey,
+          workspaceId: resourceId,
+          baseUrl: baseUrl,
+          model: Qwen3TtsAdapter.flashModel,
+          voice: Qwen3TtsAdapter.flashVoice,
         );
       case 'openai':
         return OpenAiTtsAdapter(
@@ -897,6 +1052,62 @@ class TtsService {
     );
   }
 
+  /// Retries a Qwen bare word once with a terminal boundary when Qwen returns
+  /// either a retryable server error or an unusable WAV. Cached audio still
+  /// uses the original dictionary word as its key and metadata text.
+  Future<TtsSynthesisResult> _synthesizeWithQwenWordFallback(
+    TtsProvider provider,
+    String text,
+    String lang, {
+    required String providerType,
+  }) async {
+    try {
+      return await _synthesizeCloudWithMetadata(provider, text, lang);
+    } catch (error) {
+      final shouldRetryWithBoundary =
+          providerType == 'qwen' &&
+          (_isQwenRetryableServerError(error) ||
+              error is QwenWordAudioValidationException);
+      final fallbackText = shouldRetryWithBoundary
+          ? QwenTtsAdapter.bareEnglishWordFallbackText(text, language: lang)
+          : null;
+      if (fallbackText == null) rethrow;
+      return _synthesizeCloudWithMetadata(provider, fallbackText, lang);
+    }
+  }
+
+  String _preCacheSynthesisText(
+    String provider,
+    String text,
+    String lang,
+    int attempt,
+  ) {
+    if (provider != 'qwen' || attempt == 0) return text;
+    return QwenTtsAdapter.bareEnglishWordFallbackText(text, language: lang) ??
+        text;
+  }
+
+  Duration _preCacheRetryDelay(String provider, int attempt) {
+    if (provider != 'qwen') {
+      return Duration(milliseconds: 500 * (attempt + 1));
+    }
+    const delaysInSeconds = [1, 3, 6, 12];
+    final index = attempt.clamp(0, delaysInSeconds.length - 1);
+    return Duration(seconds: delaysInSeconds[index]);
+  }
+
+  bool _isQwenRetryableServerError(Object error) {
+    return RegExp(r'Qwen TTS HTTP (?:429|5\d\d):').hasMatch(error.toString());
+  }
+
+  bool _isPreCacheRetryable(String provider, Object error) {
+    if (provider != tencentWeWinnyProvider &&
+        provider != tencentWeJackProvider) {
+      return true;
+    }
+    return error is TencentTtsException && error.isRetryable;
+  }
+
   Future<void> _recordUsage({
     required String provider,
     required String action,
@@ -906,18 +1117,44 @@ class TtsService {
     TtsSynthesisResult? result,
     String? errorMessage,
   }) async {
-    if (provider != 'doubao') return;
+    if (provider != 'doubao' &&
+        provider != 'qwen' &&
+        provider != qwen3FlashKaterinaProvider &&
+        provider != tencentWeWinnyProvider &&
+        provider != tencentWeJackProvider) {
+      return;
+    }
     final normalizedText = _normalizeCacheText(text);
     final repo = _ttsRepo;
     if (repo != null) {
+      final settingsNamespace = _settingsNamespaceForProvider(provider);
       await repo.insertUsageRecord(
         provider: provider,
         action: action,
         text: normalizedText,
         language: language,
-        model: await _settingsRepo.getString('tts_${provider}_model'),
-        voice: await _settingsRepo.getString('tts_${provider}_voice'),
-        resourceId: await _settingsRepo.getString('tts_${provider}_app_id'),
+        model: provider == 'qwen'
+            ? QwenTtsAdapter.wordModel
+            : provider == qwen3FlashKaterinaProvider
+            ? Qwen3TtsAdapter.flashModel
+            : provider == tencentWeWinnyProvider ||
+                  provider == tencentWeJackProvider
+            ? TencentTtsAdapter.action
+            : await _settingsRepo.getString('tts_${settingsNamespace}_model'),
+        voice: provider == 'qwen'
+            ? QwenTtsAdapter.wordVoice
+            : provider == qwen3FlashKaterinaProvider
+            ? Qwen3TtsAdapter.flashVoice
+            : provider == tencentWeWinnyProvider
+            ? TencentTtsAdapter.weWinnyVoiceType.toString()
+            : provider == tencentWeJackProvider
+            ? TencentTtsAdapter.weJackVoiceType.toString()
+            : await _settingsRepo.getString('tts_${settingsNamespace}_voice'),
+        resourceId:
+            provider == tencentWeWinnyProvider ||
+                provider == tencentWeJackProvider
+            ? TencentTtsAdapter.defaultRegion
+            : await _settingsRepo.getString('tts_${settingsNamespace}_app_id'),
         chargedCharacters: result?.chargedCharacters,
         audioBytes: result?.audioBytes.length,
         durationMs: result?.durationMs,
@@ -938,7 +1175,13 @@ class TtsService {
     int? audioBytes,
     int? chargedCharacters,
   }) async {
-    if (provider != 'doubao') return;
+    if (provider != 'doubao' &&
+        provider != 'qwen' &&
+        provider != qwen3FlashKaterinaProvider &&
+        provider != tencentWeWinnyProvider &&
+        provider != tencentWeJackProvider) {
+      return;
+    }
     await _ensureCacheDir();
     final normalizedText = _normalizeCacheText(text);
     final repo = _ttsRepo;
@@ -957,10 +1200,13 @@ class TtsService {
         chargedCharacters: chargedCharacters,
       );
     }
+    if (status == 'cached' && provider == 'qwen') {
+      await enforceCacheLimit(provider: provider, language: language);
+    }
   }
 
   Future<TtsCacheHealthReport> inspectCacheHealth({
-    String provider = 'doubao',
+    String provider = 'qwen',
     String language = 'en',
     Duration maxAge = const Duration(days: 30),
   }) async {
@@ -1001,20 +1247,14 @@ class TtsService {
         DateTime.fromMillisecondsSinceEpoch(record.updatedAt),
       );
       final normalizedText = _normalizeCacheText(record.textValue);
-      final currentFileName = _cacheFileName(
-        normalizedText,
-        language,
-        provider,
+      expectedFileNames.addAll(
+        _compatibleCacheFileNames(
+          normalizedText,
+          record.textValue,
+          language,
+          provider,
+        ),
       );
-      final legacyFileName = _legacyCacheFileName(
-        record.textValue,
-        language,
-        provider,
-      );
-      expectedFileNames.add(currentFileName);
-      if (provider != 'supertonic') {
-        expectedFileNames.add(legacyFileName);
-      }
 
       if (record.status == 'cached') {
         if (_hasCachedFile(
@@ -1060,7 +1300,7 @@ class TtsService {
   }
 
   Future<TtsCacheCleanupResult> cleanExpiredCache({
-    String provider = 'doubao',
+    String provider = 'qwen',
     String language = 'en',
     Duration maxAge = const Duration(days: 30),
   }) async {
@@ -1084,12 +1324,14 @@ class TtsService {
         DateTime.fromMillisecondsSinceEpoch(record.updatedAt),
       );
       final normalizedText = _normalizeCacheText(record.textValue);
-      expectedFileNames.add(_cacheFileName(normalizedText, language, provider));
-      if (provider != 'supertonic') {
-        expectedFileNames.add(
-          _legacyCacheFileName(record.textValue, language, provider),
-        );
-      }
+      expectedFileNames.addAll(
+        _compatibleCacheFileNames(
+          normalizedText,
+          record.textValue,
+          language,
+          provider,
+        ),
+      );
 
       final hasFile = _hasCachedFile(
         fileNames,
@@ -1146,6 +1388,107 @@ class TtsService {
     );
   }
 
+  /// Returns the Qwen cache limit in bytes. A saved value of zero means no
+  /// automatic pruning; the default is intentionally bounded for mobile use.
+  Future<int> getCacheLimitBytes({String provider = 'qwen'}) async {
+    if (provider != 'qwen') return 0;
+    final configured = await _settingsRepo.getInt(qwenCacheLimitSettingKey);
+    final megabytes = configured ?? defaultQwenCacheLimitMb;
+    if (megabytes <= 0) return 0;
+    return megabytes * 1024 * 1024;
+  }
+
+  /// Keeps a provider/language cache within its configured byte budget.
+  ///
+  /// Cache hits touch the file's modified time, so the least recently used
+  /// audio is pruned first. Files are only ever deleted from LingoDemo's own
+  /// cache directory, and their matching database record is removed too.
+  Future<TtsCacheLimitResult> enforceCacheLimit({
+    String provider = 'qwen',
+    String language = 'en',
+    int? limitBytes,
+  }) async {
+    await _ensureCacheDir();
+    final effectiveLimit =
+        limitBytes ?? await getCacheLimitBytes(provider: provider);
+    final candidates = <_TtsCacheFileCandidate>[];
+    for (final file in await _cacheFiles(
+      provider: provider,
+      language: language,
+    )) {
+      try {
+        candidates.add(
+          _TtsCacheFileCandidate(
+            file: file,
+            length: await file.length(),
+            lastModified: await file.lastModified(),
+          ),
+        );
+      } catch (_) {
+        // A concurrent cleanup can make an entry disappear between listing
+        // and inspection. It is safe to skip it here.
+      }
+    }
+
+    final beforeBytes = candidates.fold<int>(
+      0,
+      (sum, candidate) => sum + candidate.length,
+    );
+    if (effectiveLimit <= 0 || beforeBytes <= effectiveLimit) {
+      return TtsCacheLimitResult(
+        limitBytes: effectiveLimit,
+        beforeBytes: beforeBytes,
+        afterBytes: beforeBytes,
+        removedFiles: 0,
+        removedRecords: 0,
+      );
+    }
+
+    final records = await _loadCacheRecords(provider, language);
+    final recordsByFileName = <String, TtsCacheRecord>{};
+    for (final record in records) {
+      final cachePath = record.cachePath;
+      if (cachePath != null && cachePath.trim().isNotEmpty) {
+        recordsByFileName[_fileNameFromPath(cachePath)] = record;
+      }
+    }
+
+    candidates.sort(
+      (left, right) => left.lastModified.compareTo(right.lastModified),
+    );
+    var remainingBytes = beforeBytes;
+    var removedFiles = 0;
+    var removedRecords = 0;
+    final removedRecordIds = <int>{};
+    for (final candidate in candidates) {
+      if (remainingBytes <= effectiveLimit) break;
+      try {
+        await candidate.file.delete();
+      } catch (_) {
+        continue;
+      }
+      remainingBytes -= candidate.length;
+      removedFiles++;
+
+      final record = recordsByFileName[p.basename(candidate.file.path)];
+      if (record != null && removedRecordIds.add(record.id)) {
+        final repo = _ttsRepo;
+        if (repo != null) {
+          await repo.deleteCacheRecord(record.id);
+        }
+        removedRecords++;
+      }
+    }
+
+    return TtsCacheLimitResult(
+      limitBytes: effectiveLimit,
+      beforeBytes: beforeBytes,
+      afterBytes: remainingBytes,
+      removedFiles: removedFiles,
+      removedRecords: removedRecords,
+    );
+  }
+
   Future<bool> _isDoubaoLiveApiEnabled() async {
     final saved = await _settingsRepo.getString('tts_doubao_live_api_enabled');
     return saved != 'false';
@@ -1157,23 +1500,12 @@ class TtsService {
   }
 
   // ---------------------------------------------------------------------------
-  // SAPI (Windows system speech)
-  // ---------------------------------------------------------------------------
-
-  Future<void> _speakViaSapi(String text) async {
-    if (_sapi == null) return;
-    final speed = await _settingsRepo.getTtsSpeed();
-    _sapi!.speed = speed;
-    await _sapi!.speak(text);
-  }
-
-  // ---------------------------------------------------------------------------
   // Audio cache
   // ---------------------------------------------------------------------------
 
   Future<void> _ensureCacheDir() async {
     if (_cacheDir != null) return;
-    final appDir = await getLingoDataDir();
+    final appDir = await _dataDirProvider();
     _cacheDir = Directory('${appDir.path}/lingo_tts_cache');
     if (!await _cacheDir!.exists()) {
       await _cacheDir!.create(recursive: true);
@@ -1189,6 +1521,24 @@ class TtsService {
   }
 
   String _cacheFileName(String text, String lang, String provider) {
+    if (provider == 'qwen') {
+      return RemoteWordAudioClient.audioFileNameFor(text, language: lang);
+    }
+    if (provider == qwen3FlashKaterinaProvider) {
+      return RemoteExampleAudioClient.audioFileNameFor(text, language: lang);
+    }
+    if (provider == tencentWeWinnyProvider) {
+      return RemoteExampleAudioProfile.tencentWeWinny.audioFileNameFor(
+        text,
+        language: lang,
+      );
+    }
+    if (provider == tencentWeJackProvider) {
+      return RemoteExampleAudioProfile.tencentWeJack.audioFileNameFor(
+        text,
+        language: lang,
+      );
+    }
     final hash = _stableCacheKey(text, lang, provider);
     final ext = _cacheExtensionForProvider(provider);
     return '$hash-$provider-$lang.$ext';
@@ -1209,48 +1559,102 @@ class TtsService {
     final paths = _cachePathsForText(text, lang, provider);
     for (final path in paths) {
       final file = File(path);
-      if (await file.exists() && await file.length() > 0) {
-        return await file.readAsBytes();
-      }
+      final bytes = await _readCachedAudioFile(
+        file,
+        provider: provider,
+        touchLastModified: true,
+      );
+      if (bytes != null) return bytes;
     }
     return null;
   }
 
+  Future<Uint8List?> _readCachedAudioFile(
+    File file, {
+    required String provider,
+    required bool touchLastModified,
+  }) async {
+    if (!await file.exists() || await file.length() <= 0) return null;
+    final bytes = await file.readAsBytes();
+    if (provider == 'qwen' &&
+        QwenTtsAdapter.wordAudioValidationFailure(bytes) != null) {
+      // Treat an unusable staging file as a miss, but keep it until a
+      // successful regeneration overwrites it. Status checks are read-only.
+      return null;
+    }
+    if (provider == qwen3FlashKaterinaProvider &&
+        Qwen3TtsAdapter.exampleAudioValidationFailure(bytes) != null) {
+      // The sentence profile has a separate validation policy because Qwen3
+      // owns its output sample rate. Treat a broken staged file as a cache
+      // miss so the explicit batch/release workflow can regenerate it.
+      return null;
+    }
+    if ((provider == tencentWeWinnyProvider ||
+            provider == tencentWeJackProvider) &&
+        !_isValidTencentExampleAudio(bytes)) {
+      // Tencent WeWinny has a fixed 24 kHz PCM WAV profile. A broken staged
+      // file remains visible for diagnosis but cannot be reused or packaged.
+      return null;
+    }
+    if (touchLastModified) {
+      try {
+        await file.setLastModified(DateTime.now());
+      } catch (_) {
+        // Last-access metadata is an optimisation for LRU pruning only.
+      }
+    }
+    return bytes;
+  }
+
+  bool _isValidTencentExampleAudio(Uint8List bytes) {
+    return TencentTtsAdapter.audioValidationFailure(
+              bytes,
+              expectedSampleRate: TencentTtsAdapter.weWinnySampleRate,
+            ) ==
+            null ||
+        TencentTtsAdapter.audioValidationFailure(
+              bytes,
+              expectedSampleRate: TencentTtsAdapter.weJackSampleRate,
+            ) ==
+            null;
+  }
+
   Future<Map<String, bool>> getCachedAudioPresence(
     List<String> texts, {
-    String provider = 'doubao',
+    String provider = 'qwen',
     String lang = 'en',
   }) async {
     await _ensureCacheDir();
-    final fileNames = await _cacheFileNames(provider: provider, language: lang);
-    final records = await _loadCacheRecords(provider, lang);
-    final cachedTexts = <String>{};
-    for (final record in records) {
-      if (record.status != 'cached') continue;
-      if (_hasCachedFile(
-        fileNames,
-        _normalizeCacheText(record.textValue),
-        record.textValue,
-        lang,
-        provider,
-      )) {
-        cachedTexts.add(_normalizeCacheText(record.textValue));
-      }
-    }
-
     final result = <String, bool>{};
+    final resolved = <String, bool>{};
     for (final text in texts) {
       final normalizedText = _normalizeCacheText(text);
-      result[text] =
-          cachedTexts.contains(normalizedText) ||
-          _hasCachedFile(fileNames, normalizedText, text, lang, provider);
+      final cached = resolved[normalizedText];
+      if (cached != null) {
+        result[text] = cached;
+        continue;
+      }
+      var found = false;
+      for (final path in _cachePathsForText(normalizedText, lang, provider)) {
+        final bytes = await _readCachedAudioFile(
+          File(path),
+          provider: provider,
+          touchLastModified: false,
+        );
+        if (bytes != null) {
+          found = true;
+          break;
+        }
+      }
+      resolved[normalizedText] = found;
+      result[text] = found;
     }
     return result;
   }
 
   String cacheKeyFor(
     String text, {
-    String provider = 'doubao',
+    String provider = 'qwen',
     String lang = 'en',
   }) {
     return _stableCacheKey(_normalizeCacheText(text), lang, provider);
@@ -1272,16 +1676,40 @@ class TtsService {
   }
 
   String _cacheExtensionForProvider(String provider) {
-    return provider == 'supertonic' ? 'wav' : 'mp3';
+    return switch (provider) {
+      'qwen' => QwenTtsAdapter.wordCacheFileExtension,
+      qwen3FlashKaterinaProvider => Qwen3TtsAdapter.cacheFileExtension,
+      tencentWeWinnyProvider => TencentTtsAdapter.cacheFileExtension,
+      tencentWeJackProvider => TencentTtsAdapter.cacheFileExtension,
+      _ => 'mp3',
+    };
   }
 
   String _stableCacheKey(String text, String lang, String provider) {
     final normalizedText = _normalizeCacheText(text);
-    final cacheText = provider == 'supertonic'
-        ? 'v9\n$normalizedText'
-        : normalizedText;
+    if (provider == 'qwen') {
+      return RemoteWordAudioClient.audioKeyFor(normalizedText, language: lang);
+    }
+    if (provider == qwen3FlashKaterinaProvider) {
+      return RemoteExampleAudioClient.audioKeyFor(
+        normalizedText,
+        language: lang,
+      );
+    }
+    if (provider == tencentWeWinnyProvider) {
+      return RemoteExampleAudioProfile.tencentWeWinny.audioKeyFor(
+        normalizedText,
+        language: lang,
+      );
+    }
+    if (provider == tencentWeJackProvider) {
+      return RemoteExampleAudioProfile.tencentWeJack.audioKeyFor(
+        normalizedText,
+        language: lang,
+      );
+    }
     var hash = 0xcbf29ce484222325;
-    for (final byte in utf8.encode('$provider\n$lang\n$cacheText')) {
+    for (final byte in utf8.encode('$provider\n$lang\n$normalizedText')) {
       hash ^= byte;
       hash = (hash * 0x100000001b3) & 0xffffffffffffffff;
     }
@@ -1294,8 +1722,35 @@ class TtsService {
 
   List<String> _cachePathsForText(String text, String lang, String provider) {
     final normalizedText = _normalizeCacheText(text);
+    if (provider == qwen3FlashKaterinaProvider) {
+      // Qwen3's profile version is part of the immutable filename.  Keep the
+      // current key first, then accept the v1 key used by the first release so
+      // an app update cannot make an already-paid local cache look missing.
+      return [
+        for (final fileName in RemoteExampleAudioClient.audioFileNamesFor(
+          normalizedText,
+          language: lang,
+        ))
+          '${_cacheDir!.path}/$fileName',
+      ];
+    }
+    if (provider == tencentWeWinnyProvider) {
+      return [
+        '${_cacheDir!.path}/${RemoteExampleAudioProfile.tencentWeWinny.audioFileNameFor(normalizedText, language: lang)}',
+      ];
+    }
+    if (provider == tencentWeJackProvider) {
+      return [
+        for (final fileName
+            in RemoteExampleAudioProfile.tencentWeJack.audioFileNamesFor(
+              normalizedText,
+              language: lang,
+            ))
+          '${_cacheDir!.path}/$fileName',
+      ];
+    }
     final paths = <String>[_cacheFilePath(normalizedText, lang, provider)];
-    if (provider != 'supertonic') {
+    if (_supportsLegacyCache(provider)) {
       paths.add(_legacyCacheFilePath(text, lang, provider));
       if (normalizedText != text) {
         paths.add(_legacyCacheFilePath(normalizedText, lang, provider));
@@ -1303,6 +1758,40 @@ class TtsService {
     }
     return paths;
   }
+
+  List<String> _compatibleCacheFileNames(
+    String normalizedText,
+    String rawText,
+    String lang,
+    String provider,
+  ) {
+    if (provider == qwen3FlashKaterinaProvider) {
+      return RemoteExampleAudioClient.audioFileNamesFor(
+        normalizedText,
+        language: lang,
+      );
+    }
+    if (provider == tencentWeWinnyProvider) {
+      return RemoteExampleAudioProfile.tencentWeWinny.audioFileNamesFor(
+        normalizedText,
+        language: lang,
+      );
+    }
+    if (provider == tencentWeJackProvider) {
+      return RemoteExampleAudioProfile.tencentWeJack.audioFileNamesFor(
+        normalizedText,
+        language: lang,
+      );
+    }
+    final names = <String>{_cacheFileName(normalizedText, lang, provider)};
+    if (_supportsLegacyCache(provider)) {
+      names.add(_legacyCacheFileName(rawText, lang, provider));
+      names.add(_legacyCacheFileName(normalizedText, lang, provider));
+    }
+    return names.toList(growable: false);
+  }
+
+  bool _supportsLegacyCache(String provider) => provider != 'qwen';
 
   Future<List<String>> _cacheFileNames({
     String? provider,
@@ -1351,10 +1840,26 @@ class TtsService {
     String lang,
     String provider,
   ) {
+    if (provider == qwen3FlashKaterinaProvider) {
+      return RemoteExampleAudioClient.audioFileNamesFor(
+        normalizedText,
+        language: lang,
+      ).any(fileNames.contains);
+    }
+    if (provider == tencentWeWinnyProvider) {
+      return RemoteExampleAudioProfile.tencentWeWinny
+          .audioFileNamesFor(normalizedText, language: lang)
+          .any(fileNames.contains);
+    }
+    if (provider == tencentWeJackProvider) {
+      return RemoteExampleAudioProfile.tencentWeJack
+          .audioFileNamesFor(normalizedText, language: lang)
+          .any(fileNames.contains);
+    }
     if (fileNames.contains(_cacheFileName(normalizedText, lang, provider))) {
       return true;
     }
-    if (provider == 'supertonic') return false;
+    if (!_supportsLegacyCache(provider)) return false;
     return fileNames.contains(_legacyCacheFileName(rawText, lang, provider)) ||
         fileNames.contains(
           _legacyCacheFileName(normalizedText, lang, provider),
@@ -1363,8 +1868,38 @@ class TtsService {
 
   bool _isCacheFileFor(String fileName, {String? provider, String? language}) {
     if (provider == null && language == null) return true;
+    if (provider == 'qwen') {
+      // Current Qwen staging files have the exact same name expected by the
+      // static server. Keep recognising prior qwen files so maintenance can
+      // clean them deliberately, but they are never used for word playback.
+      if (RegExp(r'^[a-f0-9]{64}\\.wav$').hasMatch(fileName)) return true;
+      if (language == null) return fileName.contains('-qwen-');
+      return fileName.contains('-qwen-$language.');
+    }
+    if (provider == qwen3FlashKaterinaProvider) {
+      return RegExp(r'^qwen3-example-[a-f0-9]{64}\.wav$').hasMatch(fileName) ||
+          fileName.contains('-$provider-');
+    }
+    if (provider == tencentWeWinnyProvider) {
+      return RegExp(
+            r'^tencent-wewinny-example-[a-f0-9]{64}\.wav$',
+          ).hasMatch(fileName) ||
+          fileName.contains('-$provider-');
+    }
+    if (provider == tencentWeJackProvider) {
+      return RegExp(
+            r'^tencent-(?:wewinny|wejack)-example-[a-f0-9]{64}\.wav$',
+          ).hasMatch(fileName) ||
+          fileName.contains('-$provider-');
+    }
     if (provider == null || language == null) return true;
     return fileName.contains('-$provider-$language.');
+  }
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final slash = normalized.lastIndexOf('/');
+    return slash < 0 ? normalized : normalized.substring(slash + 1);
   }
 
   String _shortError(Object error) {
@@ -1376,26 +1911,52 @@ class TtsService {
   // Audio playback
   // ---------------------------------------------------------------------------
 
-  Future<void> _playWav(Uint8List wavBytes) async {
-    if (_player == null) return;
-    await _player!.stop();
-    final completed = _waitForPlaybackComplete();
-    await _player!.play(BytesSource(wavBytes, mimeType: 'audio/wav'));
-    await completed;
+  /// Word buttons often play short WAV files back-to-back. On Windows the
+  /// default release mode tears down the native media source after each word;
+  /// the completion event can reach Dart before that release fully settles.
+  /// Keeping the player in stop mode and explicitly seeking a newly prepared
+  /// source to zero prevents a previous source position/release from affecting
+  /// the first phoneme of the next word.
+  Future<void> _ensurePlaybackPlayer() async {
+    if (_player != null) return;
+    final player = AudioPlayer();
+    try {
+      await player.setReleaseMode(ReleaseMode.stop);
+      _player = player;
+    } catch (_) {
+      player.dispose();
+      rethrow;
+    }
   }
 
   Future<void> _playAudio(Uint8List bytes, {String? mimeType}) async {
-    if (_player == null) {
+    final player = _player;
+    if (player == null) {
       throw Exception('Audio player is not initialized');
     }
-    await _player!.stop();
-    final completed = _waitForPlaybackComplete();
-    await _player!.play(BytesSource(bytes, mimeType: mimeType));
-    await completed;
+    // A delay before resume() leaves the Windows audio endpoint asleep. Real
+    // silent PCM frames warm it while preserving every sample of the source
+    // word. This copy exists only for playback; cached/server WAVs are intact.
+    final playbackBytes = Platform.isWindows
+        ? WavPlaybackPreRoll.prependPcm16Silence(
+            bytes,
+            duration: _windowsWavPlaybackPreRoll,
+          )
+        : bytes;
+    await player.stop();
+    await player.setSource(BytesSource(playbackBytes, mimeType: mimeType));
+    await player.seek(Duration.zero);
+    final completed = _waitForPlaybackComplete(player);
+    try {
+      await player.resume();
+      await completed;
+    } catch (_) {
+      _completePlayback?.call();
+      rethrow;
+    }
   }
 
-  Future<void> _waitForPlaybackComplete() async {
-    if (_player == null) return;
+  Future<void> _waitForPlaybackComplete(AudioPlayer player) async {
     final completer = Completer<void>();
     _playbackCompleter = completer;
     late final StreamSubscription<dynamic> sub;
@@ -1414,7 +1975,7 @@ class TtsService {
 
     _completePlayback = complete;
 
-    sub = _player!.onPlayerComplete.listen((_) => complete());
+    sub = player.onPlayerComplete.listen((_) => complete());
     timer = Timer(const Duration(minutes: 5), complete);
     await completer.future;
   }
@@ -1422,6 +1983,12 @@ class TtsService {
   String? _audioMimeTypeForProvider(String provider) {
     switch (provider) {
       case 'qwen':
+        return QwenTtsAdapter.wordAudioMimeType;
+      case qwen3FlashKaterinaProvider:
+        return Qwen3TtsAdapter.audioMimeType;
+      case tencentWeWinnyProvider:
+      case tencentWeJackProvider:
+        return TencentTtsAdapter.audioMimeType;
       case 'openai':
       case 'doubao':
         return 'audio/mpeg';
@@ -1442,8 +2009,13 @@ class TtsService {
     String lang = 'en',
     void Function(int done, int total)? onProgress,
   }) async {
+    if (!await _ensureInitialized()) return 0;
+    await _initWordProvider(language: lang);
+    final wordProvider = _wordProvider;
+    if (wordProvider == null) return 0;
+
     int success = 0;
-    final provider = await _settingsRepo.getTtsProvider() ?? 'sapi';
+    const provider = 'qwen';
 
     for (int i = 0; i < texts.length; i++) {
       final text = texts[i];
@@ -1458,43 +2030,30 @@ class TtsService {
       }
 
       try {
-        switch (provider) {
-          case 'supertonic':
-            if (_supertonic?.isInitialized != true) await _initSupertonic();
-            final speed = await _settingsRepo.getTtsSpeed();
-            final processed = SupertonicTtsEngine.preprocessSingleWord(
-              normalizedText,
-            );
-            final audio = _supertonic!.synthesize(
-              processed,
-              speed: speed,
-              numSteps: 15,
-              lang: lang,
-            );
-            final cleaned = SupertonicTtsEngine.applyTailFadeOut(
-              audio.samples,
-              audio.sampleRate,
-              fadeDurationMs: 80,
-            );
-            final wavBytes = await _supertonic!.samplesToWav(cleaned);
-            await _cacheAudio(normalizedText, lang, 'supertonic', wavBytes);
-            success++;
-            break;
-          case 'qwen':
-          case 'openai':
-          case 'doubao':
-            if (_cloudProvider != null) {
-              final bytes = await _cloudProvider!.synthesize(
-                normalizedText,
-                language: lang,
-              );
-              await _cacheAudio(normalizedText, lang, provider, bytes);
-              success++;
-            }
-            break;
-          default:
-            break; // SAPI doesn't support pre-generation
-        }
+        final result = await _synthesizeWithQwenWordFallback(
+          wordProvider,
+          normalizedText,
+          lang,
+          providerType: provider,
+        );
+        await _cacheAudio(normalizedText, lang, provider, result.audioBytes);
+        await _recordUsage(
+          provider: provider,
+          action: 'precache',
+          text: normalizedText,
+          language: lang,
+          result: result,
+          status: 'success',
+        );
+        await _recordCache(
+          provider: provider,
+          language: lang,
+          text: normalizedText,
+          status: 'cached',
+          audioBytes: result.audioBytes.length,
+          chargedCharacters: result.chargedCharacters,
+        );
+        success++;
       } catch (_) {}
 
       onProgress?.call(i + 1, texts.length);
@@ -1512,40 +2071,19 @@ class TtsService {
     _completePlayback?.call();
     _playbackCompleter = null;
     _completePlayback = null;
-    await _sapi?.stop();
     _speaking = false;
   }
 
   Future<void> reloadSettings() async {
-    final speed = await _settingsRepo.getTtsSpeed();
-    if (_sapi != null) _sapi!.speed = speed;
-
-    final provider = await _settingsRepo.getTtsProvider() ?? 'sapi';
-
-    // Re-initialise Supertonic if provider changed to it
-    if (provider == 'supertonic' && _supertonic?.isInitialized != true) {
-      if (await _modelManager.isModelReady()) {
-        try {
-          await _initSupertonic();
-        } catch (_) {}
-      }
-    }
-
-    // Wire up cloud TTS adapter
-    if (provider == 'qwen' || provider == 'openai' || provider == 'doubao') {
-      await _initCloudProvider();
-    } else {
-      _cloudProvider = null;
-    }
+    await _initCloudProvider();
+    _wordProvider = null;
   }
 
   void dispose() {
     _player?.dispose();
     _player = null;
-    _supertonic?.dispose();
-    _supertonic = null;
-    _sapi = null;
     _cloudProvider = null;
+    _wordProvider = null;
     _initialized = false;
     _initFuture = null;
   }

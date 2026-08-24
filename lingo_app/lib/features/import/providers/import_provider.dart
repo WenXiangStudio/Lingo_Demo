@@ -11,6 +11,7 @@ import '../../../core/utils/text_normalizer.dart';
 import '../../../data/ai/ai_service.dart';
 import '../../../data/providers.dart';
 import '../../lists/providers/list_provider.dart';
+import '../../review_center/providers/review_center_provider.dart';
 
 class ParsedWord {
   final String english;
@@ -359,6 +360,8 @@ class ImportNotifier extends StateNotifier<ImportState> {
       }
 
       _ref.invalidate(listOverviewProvider);
+      _ref.invalidate(reviewBooksProvider);
+      _ref.invalidate(reviewCenterDataProvider);
 
       // Generate scenario examples via AI if requested
       if (state.genScenarios && wordIds.isNotEmpty) {

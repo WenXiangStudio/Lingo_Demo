@@ -14,8 +14,13 @@ import '../../lists/providers/list_provider.dart';
 /// time.
 class DeepPracticeScopeScreen extends ConsumerStatefulWidget {
   final String returnPath;
+  final int? initialListId;
 
-  const DeepPracticeScopeScreen({super.key, required this.returnPath});
+  const DeepPracticeScopeScreen({
+    super.key,
+    required this.returnPath,
+    this.initialListId,
+  });
 
   @override
   ConsumerState<DeepPracticeScopeScreen> createState() =>
@@ -39,7 +44,7 @@ class _DeepPracticeScopeScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppStrings.get('ai_deep_learning', lang)),
+        title: Text(AppStrings.get('workflow_ai_learning', lang)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go(widget.returnPath),
@@ -272,6 +277,27 @@ class _DeepPracticeScopeScreenState
   }
 
   _ScopeGroup _resolveGroup(List<_ScopeGroup> groups) {
+    if (_groupKey == null && widget.initialListId != null) {
+      final index = groups.indexWhere(
+        (group) => group.lists.any((list) => list.id == widget.initialListId),
+      );
+      if (index >= 0) {
+        final group = groups[index];
+        final segments = _passedSegments(group.lists);
+        final segmentIndex = segments.indexWhere(
+          (segment) => segment.any((list) => list.id == widget.initialListId),
+        );
+        if (segmentIndex >= 0) {
+          final listIndex = segments[segmentIndex].indexWhere(
+            (list) => list.id == widget.initialListId,
+          );
+          _groupKey = group.key;
+          _segmentIndex = segmentIndex;
+          _startIndex = listIndex;
+          _endIndex = listIndex;
+        }
+      }
+    }
     return groups.firstWhere(
       (group) => group.key == _groupKey,
       orElse: () => groups.first,

@@ -56,6 +56,15 @@ final forgottenWordsProvider = FutureProvider.family<List<Word>, int>((
   return repo.getForgottenWordsForList(listId);
 });
 
+/// Set of word IDs marked for cue-memory help within a given list.
+final cueMemoryWordIdsProvider = FutureProvider.family<Set<int>, int>((
+  ref,
+  listId,
+) async {
+  final repo = ref.watch(practiceRepositoryProvider);
+  return repo.getCueMemoryWordIdsForList(listId);
+});
+
 final shuffleControllerProvider = Provider.family<ShuffleController, int>((
   ref,
   listId,

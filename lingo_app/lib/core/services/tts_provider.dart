@@ -34,7 +34,7 @@ abstract class TtsProvider {
   String get providerName;
 
   /// Generate speech audio for [text] in the given [language].
-  /// Returns raw audio bytes (MP3 format).
+  /// Returns encoded audio bytes in the provider's configured format.
   Future<Uint8List> synthesize(String text, {String language = 'en'});
 }
 
@@ -43,37 +43,4 @@ abstract class MeteredTtsProvider implements TtsProvider {
     String text, {
     String language = 'en',
   });
-}
-
-enum TtsProviderType {
-  supertonic,
-  openai,
-  azure,
-  qwen,
-  doubao,
-  sapi;
-
-  String get displayName {
-    switch (this) {
-      case TtsProviderType.supertonic:
-        return 'Supertonic 3 (on-device)';
-      case TtsProviderType.openai:
-        return 'OpenAI TTS';
-      case TtsProviderType.azure:
-        return 'Azure TTS';
-      case TtsProviderType.qwen:
-        return 'Qwen3 TTS (cloud)';
-      case TtsProviderType.doubao:
-        return 'Doubao TTS (cloud)';
-      case TtsProviderType.sapi:
-        return 'Windows SAPI';
-    }
-  }
-
-  static TtsProviderType fromString(String s) {
-    return TtsProviderType.values.firstWhere(
-      (t) => t.name == s,
-      orElse: () => TtsProviderType.sapi,
-    );
-  }
 }

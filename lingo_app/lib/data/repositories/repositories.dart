@@ -176,12 +176,19 @@ class PracticeRepository {
     required double accuracy,
     int? startedAt,
     int? finishedAt,
+    String? sessionKind,
   }) {
     final now = DateTime.now().millisecondsSinceEpoch;
+    final resolvedKind =
+        sessionKind ??
+        (mode.startsWith('deep_')
+            ? PracticeSessionKind.aiLearning
+            : PracticeSessionKind.memorization);
     return _db.insertSession(
       PracticeSessionsCompanion(
         listId: Value(listId),
         mode: Value(mode),
+        sessionKind: Value(resolvedKind),
         totalCount: Value(totalCount),
         correctCount: Value(correctCount),
         accuracy: Value(accuracy),
@@ -197,6 +204,9 @@ class PracticeRepository {
       _db.getSessionsForList(listId);
 
   Future<List<PracticeSession>> getAllSessions() => _db.getAllSessions();
+
+  Future<List<PracticeSession>> getMemorizationSessionsForList(int listId) =>
+      _db.getMemorizationSessionsForList(listId);
 
   Future<void> recordAnswers(List<PracticeAnswersCompanion> answers) =>
       _db.insertAnswers(answers);
@@ -225,14 +235,25 @@ class PracticeRepository {
   Future<void> markWordForgotten(int wordId, int listId) =>
       _db.markWordForgotten(wordId, listId);
 
+  Future<void> markWordCueMemory(int wordId, int listId) =>
+      _db.markWordCueMemory(wordId, listId);
+
   Future<List<Word>> getForgottenWordsForList(int listId) =>
       _db.getForgottenWordsForList(listId);
+
+  Future<List<Word>> getCueMemoryWordsForList(int listId) =>
+      _db.getCueMemoryWordsForList(listId);
 
   Future<void> clearForgottenStatus(int wordId, int listId) =>
       _db.clearForgottenStatus(wordId, listId);
 
   Future<Set<int>> getForgottenWordIdsForList(int listId) async {
     final words = await _db.getForgottenWordsForList(listId);
+    return words.map((w) => w.id).toSet();
+  }
+
+  Future<Set<int>> getCueMemoryWordIdsForList(int listId) async {
+    final words = await _db.getCueMemoryWordsForList(listId);
     return words.map((w) => w.id).toSet();
   }
 
@@ -249,6 +270,85 @@ class PracticeRepository {
     List<int> wordIds, {
     int? bookId,
   }) => _db.clearForgottenStatusForWordsInScope(wordIds, bookId: bookId);
+}
+
+class LearningActivityRepository {
+  final AppDatabase _db;
+
+  LearningActivityRepository(this._db);
+
+  Future<int> startActivity({
+    required String activityType,
+    String? subtype,
+    List<int> listIds = const [],
+    List<int> wordIds = const [],
+    int? startedAt,
+  }) => _db.startActivity(
+    activityType: activityType,
+    subtype: subtype,
+    listIds: listIds,
+    wordIds: wordIds,
+    startedAt: startedAt,
+  );
+
+  Future<void> completeActivity(
+    int activityId, {
+    String? subtype,
+    int? questionCount,
+    int? correctCount,
+    double? accuracy,
+    int? turnCount,
+    int? targetWordUseCount,
+    double? naturalnessAverage,
+    double? contextFitAverage,
+    int? skillRunCount,
+    int? involvedWordCount,
+    List<int> wordIds = const [],
+    List<int> errorWordIds = const [],
+    Map<int, int> wordUsageCounts = const {},
+    int? finishedAt,
+  }) => _db.completeActivity(
+    activityId,
+    subtype: subtype,
+    questionCount: questionCount,
+    correctCount: correctCount,
+    accuracy: accuracy,
+    turnCount: turnCount,
+    targetWordUseCount: targetWordUseCount,
+    naturalnessAverage: naturalnessAverage,
+    contextFitAverage: contextFitAverage,
+    skillRunCount: skillRunCount,
+    involvedWordCount: involvedWordCount,
+    wordIds: wordIds,
+    errorWordIds: errorWordIds,
+    wordUsageCounts: wordUsageCounts,
+    finishedAt: finishedAt,
+  );
+
+  Future<void> abandonActivity(int activityId, {int? finishedAt}) =>
+      _db.abandonActivity(activityId, finishedAt: finishedAt);
+
+  Future<LearningActivityRecord?> getActivity(int id) => _db.getActivity(id);
+
+  Future<List<LearningActivityRecord>> getActivitiesForDay(
+    DateTime day, {
+    int? bookId,
+    List<int>? listIds,
+    bool completedOnly = true,
+  }) => _db.getActivitiesForDay(
+    day,
+    bookId: bookId,
+    listIds: listIds,
+    completedOnly: completedOnly,
+  );
+
+  Future<List<DailyListReview>> getDailyListReview(
+    DateTime day, {
+    int? bookId,
+  }) => _db.getDailyListReview(day, bookId: bookId);
+
+  Future<DailyAiSummary> getDailyAiSummary(DateTime day, {int? bookId}) =>
+      _db.getDailyAiSummary(day, bookId: bookId);
 }
 
 class SettingsRepository {
@@ -376,6 +476,7 @@ class SettingsRepository {
       setString(keyLanguageToolBaseUrl, value);
 
   static const String keyAppLanguage = 'app_language';
+  static const String keyReviewDataResetNotice = 'review_data_reset_notice';
   static const String keyTtsProvider = 'tts_provider';
   static const String keyTtsSpeed = 'tts_speed';
   static const String keyTtsModelVersion = 'tts_model_version';
@@ -383,10 +484,20 @@ class SettingsRepository {
   static const String keyTtsBaseUrl = 'tts_base_url';
   static const String keyTtsModel = 'tts_model';
   static const String keyTtsVoice = 'tts_voice';
+  static const String keyRemoteWordAudioBaseUrl = 'remote_word_audio_base_url';
+  static const String keyWordAudioPlaybackSource = 'word_audio_playback_source';
+  static const String keyExampleAudioPlaybackSource =
+      'example_audio_playback_source';
 
   Future<String?> getAppLanguage() => getString(keyAppLanguage);
 
   Future<void> setAppLanguage(String value) => setString(keyAppLanguage, value);
+
+  Future<bool> getReviewDataResetNotice() async =>
+      (await getString(keyReviewDataResetNotice)) == 'true';
+
+  Future<void> clearReviewDataResetNotice() =>
+      setString(keyReviewDataResetNotice, 'false');
 
   Future<String?> getTtsProvider() => getString(keyTtsProvider);
 
@@ -512,18 +623,15 @@ class TtsRepository {
     int? chargedCharacters,
   }) {
     return _db.upsertTtsCacheRecord(
-      TtsCacheRecordsCompanion(
-        provider: Value(provider),
-        language: Value(language),
-        textValue: Value(text),
-        cacheKey: Value(cacheKey),
-        status: Value(status),
-        cachePath: Value.absentIfNull(cachePath),
-        errorMessage: Value.absentIfNull(errorMessage),
-        audioBytes: Value.absentIfNull(audioBytes),
-        chargedCharacters: Value.absentIfNull(chargedCharacters),
-        updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
-      ),
+      provider: provider,
+      language: language,
+      text: text,
+      cacheKey: cacheKey,
+      status: status,
+      cachePath: cachePath,
+      errorMessage: errorMessage,
+      audioBytes: audioBytes,
+      chargedCharacters: chargedCharacters,
     );
   }
 

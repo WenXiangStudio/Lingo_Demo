@@ -6,8 +6,8 @@ import '../../../core/services/tts_providers.dart';
 import '../../../data/providers.dart';
 
 /// Free-form text TTS reader per design "核心额外功能：文本转 TTS 语音 →
-/// 用户还可以自己上传文本". Uses the active TTS engine (Supertonic / Qwen /
-/// Doubao / SAPI) to read whatever the user types or pastes.
+/// 用户还可以自己上传文本". Uses the active cloud TTS provider to read
+/// whatever the user types or pastes.
 class CustomTtsScreen extends ConsumerStatefulWidget {
   const CustomTtsScreen({super.key});
 

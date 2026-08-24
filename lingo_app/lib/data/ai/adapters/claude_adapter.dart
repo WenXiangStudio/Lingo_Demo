@@ -39,8 +39,14 @@ class ClaudeAdapter implements AiProvider {
   AiUsage? get lastUsage => _lastUsage;
 
   @override
-  Future<List<Collocation>> generateCollocations(List<String> words) async {
-    final prompt = AiPrompts.collocationsPrompt(words);
+  Future<List<Collocation>> generateCollocations(
+    List<String> words, {
+    Map<String, String> targetMeanings = const {},
+  }) async {
+    final prompt = AiPrompts.collocationsPrompt(
+      words,
+      targetMeanings: targetMeanings,
+    );
     final json = await _callClaude(prompt);
     final results = (json as List).cast<Map<String, dynamic>>();
     final collocations = <Collocation>[];

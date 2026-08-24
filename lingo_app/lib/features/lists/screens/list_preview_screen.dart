@@ -47,12 +47,10 @@ class _ListPreviewScreenState extends ConsumerState<ListPreviewScreen> {
       : '/list/${widget.listId}';
 
   String _practiceRoute(String suffix) =>
-      '/practice/${widget.listId}/$suffix?returnPath=${Uri.encodeComponent(_previewRoute())}';
+      '/practice/${widget.listId}/$suffix?returnPath=${Uri.encodeComponent(_previewRoute())}&exampleCueTracking=true';
 
   Future<void> _onMenuSelected(String value) async {
     switch (value) {
-      case 'history':
-        context.push('/history/${widget.listId}');
       case 'errors':
         context.push('/error-words/${widget.listId}');
       case 'forgotten':
@@ -100,14 +98,6 @@ class _ListPreviewScreenState extends ConsumerState<ListPreviewScreen> {
           PopupMenuButton<String>(
             onSelected: _onMenuSelected,
             itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'history',
-                child: ListTile(
-                  leading: const Icon(Icons.history),
-                  title: Text(AppStrings.get('history', lang)),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
               PopupMenuItem(
                 value: 'errors',
                 child: ListTile(
@@ -286,13 +276,28 @@ class _WordCardBodyState extends ConsumerState<_WordCardBody> {
     }
   }
 
-  Future<void> _speak(String text, {bool customText = false}) async {
+  Future<void> _speak(String text, {bool exampleSentence = false}) async {
     final tts = ref.read(ttsServiceProvider);
-    final result = customText
-        ? await tts.speakCustomText(text)
-        : await tts.speak(text);
-    if (!mounted || result.provider != 'doubao') return;
+    final result = exampleSentence
+        ? await tts.speakExampleSentence(text)
+        : await tts.speakWord(text);
+    if (!mounted) return;
     final lang = ref.read(languageProvider);
+    if (!result.played) {
+      final key = exampleSentence
+          ? _exampleAudioErrorKey(result.provider, result.source)
+          : _wordAudioErrorKey(result.provider, result.source);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppStrings.get(key, lang, params: {'msg': result.message ?? ''}),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    if (result.provider != 'doubao') return;
     final key = switch (result.source) {
       'cache' => 'tts_played_doubao_cache',
       'api' => 'tts_played_doubao_api',
@@ -307,6 +312,71 @@ class _WordCardBodyState extends ConsumerState<_WordCardBody> {
         duration: const Duration(seconds: 1),
       ),
     );
+  }
+
+  String _wordAudioErrorKey(String provider, String source) {
+    if (provider == 'remote_word_audio') {
+      return switch (source) {
+        'remote_not_configured' => 'word_audio_server_not_configured',
+        'remote_invalid_url' => 'word_audio_server_invalid_url',
+        'remote_not_found' => 'word_audio_file_not_found',
+        'remote_timeout' => 'word_audio_timeout',
+        'remote_invalid_audio' => 'word_audio_invalid_file',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'word_audio_unavailable',
+      };
+    }
+
+    if (provider == 'qwen') {
+      return switch (source) {
+        'not_configured' => 'tts_qwen_not_configured',
+        'api_failed' => 'tts_qwen_api_failed_detail',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'word_audio_direct_failed',
+      };
+    }
+
+    if (provider == 'doubao') {
+      return switch (source) {
+        'not_configured' => 'word_audio_direct_not_configured',
+        'api_disabled_missing_cache' => 'tts_doubao_cache_missing_api_disabled',
+        'api_failed' => 'tts_doubao_api_failed',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'word_audio_direct_failed',
+      };
+    }
+
+    return switch (source) {
+      'not_configured' => 'word_audio_direct_not_configured',
+      'blocked' => 'word_audio_busy',
+      'not_ready' => 'word_audio_not_ready',
+      _ => 'word_audio_direct_failed',
+    };
+  }
+
+  String _exampleAudioErrorKey(String provider, String source) {
+    if (provider == 'remote_example_audio') {
+      return switch (source) {
+        'remote_example_not_configured' =>
+          'example_audio_server_not_configured',
+        'remote_example_invalid_url' => 'example_audio_server_invalid_url',
+        'remote_example_not_found' => 'example_audio_file_not_found',
+        'remote_example_timeout' => 'example_audio_timeout',
+        'remote_example_invalid_audio' => 'example_audio_invalid_file',
+        'blocked' => 'word_audio_busy',
+        'not_ready' => 'word_audio_not_ready',
+        _ => 'example_audio_unavailable',
+      };
+    }
+    return switch (source) {
+      'not_configured' => 'example_audio_direct_not_configured',
+      'blocked' => 'word_audio_busy',
+      'not_ready' => 'word_audio_not_ready',
+      _ => 'example_audio_direct_failed',
+    };
   }
 
   Future<void> _confirmAndMarkForgotten() async {
@@ -469,8 +539,10 @@ class _WordCardBodyState extends ConsumerState<_WordCardBody> {
                             chineseTranslation: scenarioTranslation,
                             showChineseMeaning: _showChinese,
                             lang: lang,
-                            onSpeak: () =>
-                                _speak(word.scenarioExample!, customText: true),
+                            onSpeak: () => _speak(
+                              word.scenarioExample!,
+                              exampleSentence: true,
+                            ),
                           ),
                         ),
                       ],

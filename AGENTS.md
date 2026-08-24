@@ -72,45 +72,10 @@ If `flutter analyze` / `dart analyze` times out on this project:
 3. If the change is UI/runtime-only, validate by rebuilding the target (`flutter build windows --debug`) instead of waiting on a full analyzer pass.
 4. Only treat a full-project analyzer run as a final gate when time allows; it is not a reliable fast feedback loop on this machine.
 
-<!-- BEGIN AGENT-CONTEXT -->
-## Agent Task Context
+<!-- BEGIN AGENT-MEM-DISABLED -->
+## Agent-mem
 
-This project uses `agent-mem` and `.agents/` for compact cross-window and cross-agent project memory.
-
-- `AGENTS.md` is stable project guidance and may be loaded automatically.
-- `.agents/project-state.md` stores durable cross-task facts and is injected when `.agents/context-mode` is `auto`.
-- `.agents/tasks/<task>/state.md` is the authoritative task state and is injected only when `.agents/context-mode` is `auto`.
-- `.agents/events/*.jsonl` stores structured memory events; user-level SQLite FTS5 indexing lives under `~/.agent-mem/` when writable.
-- `.agents/tasks/<task>/handoffs/` stores historical handoff notes. Do not read all handoffs by default.
-- `.\agent-mem.ps1 task new <task-name>` carries forward useful sections from the previously active task state.
-- `.\agent-mem.ps1 enter <tool>` prepares state, validates it, and launches supported terminal tools.
-- `.\agent-mem.ps1 prompt <resume|handoff|new-task>` prints copyable in-agent prompt templates.
-- `.\am.ps1` is a short wrapper for `.\agent-mem.ps1`.
-- `.\agent-task.ps1` remains as a compatibility wrapper for older commands.
-- Before switching windows, compacting context, or changing agents, update the active task state.
-- Validate state structure with `.\agent-mem.ps1 validate` after manual edits.
-
-Use:
-
-```powershell
-.\agent-mem.ps1 status
-.\agent-mem.ps1 enter codex
-.\agent-mem.ps1 prompt handoff --to claude-code --copy
-.\agent-mem.ps1 task use <task-name>
-.\agent-mem.ps1 task new <task-name>
-.\agent-mem.ps1 task off
-.\agent-mem.ps1 handoff --summary "handoff summary"
-.\agent-mem.ps1 remember "durable project fact"
-.\agent-mem.ps1 remember --global "durable user fact"
-.\agent-mem.ps1 search "query"
-.\agent-mem.ps1 validate
-
-# Legacy wrapper:
-.\agent-task.ps1 status
-.\agent-task.ps1 use <task-name>
-.\agent-task.ps1 new <task-name>
-.\agent-task.ps1 off
-.\agent-task.ps1 handoff
-.\agent-task.ps1 remember "durable project fact"
-```
-<!-- END AGENT-CONTEXT -->
+Agent-mem integration is not part of this repository. Do not create or update
+`.agents/` state, start an agent-mem MCP server, add wrapper scripts, or
+re-enable related hooks unless the user explicitly asks.
+<!-- END AGENT-MEM-DISABLED -->

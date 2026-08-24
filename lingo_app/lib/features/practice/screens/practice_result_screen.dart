@@ -455,9 +455,7 @@ class _PracticeResultScreenState extends ConsumerState<PracticeResultScreen> {
           OutlinedButton.icon(
             onPressed: isPersisting
                 ? null
-                : () => _leaveResult(
-                    _practiceAgainPath(state),
-                  ),
+                : () => _leaveResult(_practiceAgainPath(state)),
             icon: const Icon(Icons.replay),
             label: Text(AppStrings.get('practice_again', lang)),
           ),
@@ -469,6 +467,53 @@ class _PracticeResultScreenState extends ConsumerState<PracticeResultScreen> {
             icon: const Icon(Icons.list_alt),
             label: Text(AppStrings.get('back_to_list', lang)),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: isPersisting ? null : () => _leaveResult('/'),
+            icon: const Icon(Icons.home_outlined),
+            label: Text(AppStrings.get('workflow_return', lang)),
+          ),
+          if (isPassed && !state.onlyForgotten && !state.onlyErrors) ...[
+            const SizedBox(height: 18),
+            Text(
+              AppStrings.get('workflow_ai_learning', lang),
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: isPersisting
+                      ? null
+                      : () => _leaveResult(
+                          '/deep-practice/${widget.listId}/setup?listIds=${widget.listId}&returnPath=${Uri.encodeComponent('/')}',
+                        ),
+                  icon: const Icon(Icons.auto_awesome),
+                  label: Text(AppStrings.get('workflow_ai_learning', lang)),
+                ),
+                OutlinedButton.icon(
+                  onPressed: isPersisting
+                      ? null
+                      : () => _leaveResult(
+                          '/dialogue/${widget.listId}?listId=${widget.listId}',
+                        ),
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  label: Text(AppStrings.get('workflow_ai_dialogue', lang)),
+                ),
+                OutlinedButton.icon(
+                  onPressed: isPersisting
+                      ? null
+                      : () => _leaveResult('/skills?listId=${widget.listId}'),
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: Text(AppStrings.get('workflow_skills', lang)),
+                ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 32),
         ],
@@ -486,11 +531,10 @@ class _PracticeResultScreenState extends ConsumerState<PracticeResultScreen> {
     if (state.onlyErrors && state.clearedForgottenCount >= state.words.length) {
       return widget.returnPath;
     }
-    final params = <String, String>{
-      'returnPath': widget.returnPath,
-    };
+    final params = <String, String>{'returnPath': widget.returnPath};
     if (state.onlyForgotten) params['forgotten'] = 'true';
     if (state.onlyErrors) params['errors'] = 'true';
+    if (state.trackExampleReveals) params['exampleCueTracking'] = 'true';
     return Uri(
       path: '/practice/${widget.listId}/setup',
       queryParameters: params,

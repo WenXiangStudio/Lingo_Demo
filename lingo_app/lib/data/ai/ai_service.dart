@@ -108,8 +108,14 @@ class _UsageTrackingAiProvider implements AiProvider {
   AiUsage? get lastUsage => _inner.lastUsage;
 
   @override
-  Future<List<Collocation>> generateCollocations(List<String> words) async {
-    final result = await _inner.generateCollocations(words);
+  Future<List<Collocation>> generateCollocations(
+    List<String> words, {
+    Map<String, String> targetMeanings = const {},
+  }) async {
+    final result = await _inner.generateCollocations(
+      words,
+      targetMeanings: targetMeanings,
+    );
     await _recordLastUsage();
     return result;
   }

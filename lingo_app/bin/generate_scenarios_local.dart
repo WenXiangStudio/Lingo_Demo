@@ -1,21 +1,25 @@
-/// Batch script: generate scenario_example sentences using LOCAL templates.
-///
-/// Instant — no API calls, no network, zero cost.
-/// Deterministic — the same word always gets the same sentence.
-///
-/// Usage:
-///   dart run bin/generate_scenarios_local.dart <input.csv> [output.csv]
+// ignore_for_file: avoid_print
+
+// Batch script: generate scenario_example sentences using local templates.
+//
+// Instant: no API calls, no network, zero cost.
+// Deterministic: the same word always gets the same sentence.
+//
+// Usage:
+//   dart run bin/generate_scenarios_local.dart <input.csv> [output.csv]
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
 
-import '../lib/data/ai/scenario_templates.dart';
+import 'package:lingo_app/data/ai/scenario_templates.dart';
 
 void main(List<String> args) async {
   if (args.isEmpty || args.first == '--help') {
-    print('Usage: dart run bin/generate_scenarios_local.dart <input.csv> [output.csv]');
+    print(
+      'Usage: dart run bin/generate_scenarios_local.dart <input.csv> [output.csv]',
+    );
     return;
   }
 
@@ -40,7 +44,9 @@ void main(List<String> args) async {
 
   final header = rows.first.map((c) => c.toString().trim()).toList();
   final engIdx = header.indexWhere((h) => h.toLowerCase() == 'english');
-  final chnIdx = header.indexWhere((h) => h.toLowerCase() == 'chinese_meanings');
+  final chnIdx = header.indexWhere(
+    (h) => h.toLowerCase() == 'chinese_meanings',
+  );
 
   if (engIdx == -1 || chnIdx == -1) {
     stderr.writeln('CSV must have english and chinese_meanings columns.');

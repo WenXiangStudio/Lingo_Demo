@@ -27,7 +27,7 @@ dependencies:
   dio: ^5.7.0
   crypto: ^3.0.6
 
-  # TTS (local + cloud)
+  # Local ASR and cloud TTS playback
   sherpa_onnx: ^1.13.0
   audioplayers: ^6.1.0
 
@@ -53,6 +53,7 @@ dependencies:
   # Path provider for database file
   path_provider: ^2.1.5
   path: ^1.9.0
+  archive: ^3.6.1
 
 dev_dependencies:
   flutter_test:
@@ -70,5 +71,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/word_books/
-    - assets/tts_model/
-    - assets/tts_model/onnx/
+    - assets/phonetics/british/

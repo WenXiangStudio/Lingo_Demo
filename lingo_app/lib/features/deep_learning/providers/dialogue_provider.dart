@@ -94,6 +94,7 @@ class DialogueState {
   final Map<String, String> errorParams;
   final bool showTranslation;
   final int maxTurns;
+  final int? activityId;
 
   const DialogueState({
     this.phase = DialoguePhase.setup,
@@ -114,6 +115,7 @@ class DialogueState {
     this.errorParams = const {},
     this.showTranslation = true,
     this.maxTurns = 6,
+    this.activityId,
   });
 
   int get turnCount => feedbacks.length;
@@ -142,6 +144,7 @@ class DialogueState {
     Map<String, String>? errorParams,
     bool? showTranslation,
     int? maxTurns,
+    int? activityId,
     bool clearError = false,
     bool clearLatestFeedback = false,
     bool clearLatestLanguageToolResult = false,
@@ -169,6 +172,7 @@ class DialogueState {
       errorParams: clearError ? const {} : (errorParams ?? this.errorParams),
       showTranslation: showTranslation ?? this.showTranslation,
       maxTurns: maxTurns ?? this.maxTurns,
+      activityId: activityId ?? this.activityId,
     );
   }
 }
@@ -189,11 +193,20 @@ class DialogueNotifier extends StateNotifier<DialogueState> {
     final words = await repo.getWordsForList(listId);
     if (words.isEmpty) return;
 
+    final activityId = await _ref
+        .read(learningActivityRepositoryProvider)
+        .startActivity(
+          activityType: LearningActivityType.dialogue,
+          subtype: defaultDialogueScenario.id,
+          listIds: [listId],
+          wordIds: words.map((word) => word.id).toList(),
+        );
     state = DialogueState(
       listId: listId,
       words: words,
       selectedWords: words.take(5).map((w) => w.english).toList(),
       scenario: defaultDialogueScenario,
+      activityId: activityId,
     );
   }
 
@@ -237,8 +250,20 @@ class DialogueNotifier extends StateNotifier<DialogueState> {
       return;
     }
 
+    var activityId = state.activityId;
+    if (activityId == null && state.listId != null) {
+      activityId = await _ref
+          .read(learningActivityRepositoryProvider)
+          .startActivity(
+            activityType: LearningActivityType.dialogue,
+            subtype: state.scenario.id,
+            listIds: [state.listId!],
+            wordIds: state.words.map((word) => word.id).toList(),
+          );
+    }
     state = state.copyWith(
       phase: DialoguePhase.starting,
+      activityId: activityId,
       clearError: true,
       clearLatestFeedback: true,
       messages: const [],
@@ -346,6 +371,56 @@ class DialogueNotifier extends StateNotifier<DialogueState> {
         nextTargetWords: _validTargetWords(feedback.nextTargetWords),
         clearError: true,
       );
+      if (isComplete && previousState.activityId != null) {
+        final naturalness = feedbacks.isEmpty
+            ? null
+            : feedbacks.fold<double>(
+                    0,
+                    (sum, item) => sum + item.naturalnessScore,
+                  ) /
+                  feedbacks.length;
+        final contextFit = feedbacks.isEmpty
+            ? null
+            : feedbacks.fold<double>(
+                    0,
+                    (sum, item) => sum + item.contextFitScore,
+                  ) /
+                  feedbacks.length;
+        final usage = <int, int>{};
+        for (final selected in previousState.selectedWords) {
+          final word = previousState.words
+              .where(
+                (candidate) =>
+                    candidate.english.toLowerCase() == selected.toLowerCase(),
+              )
+              .firstOrNull;
+          if (word != null) usage[word.id] = 0;
+        }
+        for (final used in usedWords) {
+          final word = previousState.words
+              .where(
+                (candidate) =>
+                    candidate.english.toLowerCase() == used.toLowerCase(),
+              )
+              .firstOrNull;
+          if (word != null) {
+            usage.update(word.id, (value) => value + 1, ifAbsent: () => 1);
+          }
+        }
+        await _ref
+            .read(learningActivityRepositoryProvider)
+            .completeActivity(
+              previousState.activityId!,
+              subtype: previousState.scenario.id,
+              turnCount: feedbacks.length,
+              targetWordUseCount: usedWords.length,
+              naturalnessAverage: naturalness,
+              contextFitAverage: contextFit,
+              involvedWordCount: usage.length,
+              wordIds: usage.keys.toList(),
+              wordUsageCounts: usage,
+            );
+      }
     } catch (e) {
       if (!mounted) return;
       state = previousState.copyWith(
@@ -357,6 +432,12 @@ class DialogueNotifier extends StateNotifier<DialogueState> {
   }
 
   void backToSetup() {
+    if (state.activityId != null) {
+      _ref
+          .read(learningActivityRepositoryProvider)
+          .abandonActivity(state.activityId!)
+          .ignore();
+    }
     state = DialogueState(
       listId: state.listId,
       words: state.words,
@@ -364,6 +445,12 @@ class DialogueNotifier extends StateNotifier<DialogueState> {
       scenario: state.scenario,
       showTranslation: state.showTranslation,
     );
+  }
+
+  Future<void> abandonActivity() async {
+    final id = state.activityId;
+    if (id == null || state.phase == DialoguePhase.complete) return;
+    await _ref.read(learningActivityRepositoryProvider).abandonActivity(id);
   }
 
   Future<String?> _grammarContextForReply(

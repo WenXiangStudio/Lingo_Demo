@@ -10,7 +10,9 @@ import '../../../data/providers.dart';
 import '../../lists/providers/list_provider.dart';
 
 class SkillsScreen extends ConsumerStatefulWidget {
-  const SkillsScreen({super.key});
+  final int? initialListId;
+
+  const SkillsScreen({super.key, this.initialListId});
 
   @override
   ConsumerState<SkillsScreen> createState() => _SkillsScreenState();
@@ -91,7 +93,11 @@ class _SkillsScreenState extends ConsumerState<SkillsScreen> {
         if (inputs.containsKey(spec.id)) continue;
         switch (spec.type) {
           case SkillInputType.wordList:
-            inputs[spec.id] = lists.first.id;
+            inputs[spec.id] =
+                widget.initialListId != null &&
+                    lists.any((list) => list.id == widget.initialListId)
+                ? widget.initialListId
+                : lists.first.id;
             break;
           case SkillInputType.integer:
             inputs[spec.id] = spec.defaultValue ?? spec.min ?? 1;

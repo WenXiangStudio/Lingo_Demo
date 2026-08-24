@@ -9,14 +9,14 @@ import '../../../data/database/app_database.dart';
 import '../../../data/providers.dart';
 import '../../import/providers/built_in_books_provider.dart';
 import '../../import/providers/import_provider.dart';
+import '../../review_center/providers/review_center_provider.dart';
 import '../providers/list_provider.dart';
 
 class ListOverviewScreen extends ConsumerStatefulWidget {
   const ListOverviewScreen({super.key});
 
   @override
-  ConsumerState<ListOverviewScreen> createState() =>
-      _ListOverviewScreenState();
+  ConsumerState<ListOverviewScreen> createState() => _ListOverviewScreenState();
 }
 
 class _ListOverviewScreenState extends ConsumerState<ListOverviewScreen> {
@@ -148,7 +148,8 @@ class _ListOverviewScreenState extends ConsumerState<ListOverviewScreen> {
               : Column(
                   children: [
                     ...books.map(
-                      (book) => _builtInBookCard(context, ref, book, theme),
+                      (book) =>
+                          _builtInBookCard(context, ref, book, theme, lang),
                     ),
                   ],
                 ),
@@ -241,8 +242,9 @@ class _ListOverviewScreenState extends ConsumerState<ListOverviewScreen> {
     WidgetRef ref,
     BuiltInWordBook book,
     ThemeData theme,
+    String lang,
   ) {
-    final lang = ref.watch(languageProvider);
+    final displayName = AppStrings.get(book.nameKey, lang);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -250,7 +252,7 @@ class _ListOverviewScreenState extends ConsumerState<ListOverviewScreen> {
         onTap: () {
           ref
               .read(importStateProvider.notifier)
-              .loadBuiltInBook(book.assetPath, book.name);
+              .loadBuiltInBook(book.assetPath, displayName);
           context.push('/import');
         },
         child: Padding(
@@ -276,7 +278,7 @@ class _ListOverviewScreenState extends ConsumerState<ListOverviewScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      book.name,
+                      displayName,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -429,6 +431,8 @@ class _ListCard extends ConsumerWidget {
             onPressed: () async {
               await ref.read(wordListRepositoryProvider).deleteList(list.id);
               ref.invalidate(listOverviewProvider);
+              ref.invalidate(reviewBooksProvider);
+              ref.invalidate(reviewCenterDataProvider);
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
             style: FilledButton.styleFrom(

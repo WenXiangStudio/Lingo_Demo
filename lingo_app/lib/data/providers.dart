@@ -25,6 +25,10 @@ final practiceRepositoryProvider = Provider<PracticeRepository>(
   (ref) => PracticeRepository(ref.watch(appDatabaseProvider)),
 );
 
+final learningActivityRepositoryProvider = Provider<LearningActivityRepository>(
+  (ref) => LearningActivityRepository(ref.watch(appDatabaseProvider)),
+);
+
 final settingsRepositoryProvider = Provider<SettingsRepository>(
   (ref) => SettingsRepository(ref.watch(appDatabaseProvider)),
 );

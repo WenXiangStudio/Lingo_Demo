@@ -42,10 +42,13 @@ class _DeepPracticeSetupScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppStrings.get('ai_deep_learning', lang)),
+        title: Text(AppStrings.get('workflow_ai_learning', lang)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go(widget.returnPath),
+          onPressed: () {
+            ref.read(deepPracticeProvider.notifier).reset();
+            context.go(widget.returnPath);
+          },
         ),
       ),
       body: Padding(

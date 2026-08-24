@@ -21,6 +21,7 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
     final booksAsync = ref.watch(reviewBooksProvider);
     final dataAsync = ref.watch(reviewCenterDataProvider);
     final selectedBookId = ref.watch(reviewSelectedBookIdProvider);
+    final selectedDate = ref.watch(reviewSelectedDateProvider);
     final sortMode = ref.watch(reviewSortModeProvider);
     final theme = Theme.of(context);
     return Scaffold(
@@ -49,6 +50,7 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
         booksAsync: booksAsync,
         dataAsync: dataAsync,
         selectedBookId: selectedBookId,
+        selectedDate: selectedDate,
         sortMode: sortMode,
         lang: lang,
         theme: theme,
@@ -62,6 +64,7 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
     required AsyncValue<List<WordBook>> booksAsync,
     required AsyncValue<ReviewCenterData> dataAsync,
     required int? selectedBookId,
+    required DateTime selectedDate,
     required ReviewSortMode sortMode,
     required String lang,
     required ThemeData theme,
@@ -99,21 +102,18 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
     }
 
     final isLoading = data == null;
-    final totalErrorCount = isLoading
-        ? AppStrings.get('loading', lang)
-        : data.totalErrorCount.toString();
-    final totalForgottenCount = isLoading
-        ? AppStrings.get('loading', lang)
-        : data.totalForgottenCount.toString();
     final activeErrorWordCount = isLoading
         ? AppStrings.get('loading', lang)
         : data.activeErrorWordCount.toString();
     final activeForgottenWordCount = isLoading
         ? AppStrings.get('loading', lang)
         : data.activeForgottenWordCount.toString();
+    final activeCueMemoryWordCount = isLoading
+        ? AppStrings.get('loading', lang)
+        : data.activeCueMemoryWordCount.toString();
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           Padding(
@@ -123,37 +123,37 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
               ref,
               booksAsync,
               selectedBookId,
+              selectedDate,
               lang,
             ),
           ),
+          if (data != null) ...[
+            _buildDashboardOverview(context, data, lang, theme),
+            if (data.migrationNotice)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: _MigrationNotice(
+                  lang: lang,
+                  onDismiss: () async {
+                    await ref
+                        .read(settingsRepositoryProvider)
+                        .setString('review_data_reset_notice', 'false');
+                    ref.invalidate(reviewMigrationNoticeProvider);
+                    ref.invalidate(reviewCenterDataProvider);
+                  },
+                ),
+              ),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Row(
               children: [
                 Expanded(
                   child: _SummaryTile(
-                    label: AppStrings.get('total_error_count', lang),
-                    value: totalErrorCount,
-                    icon: Icons.error_outline,
-                    color: Colors.red,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _SummaryTile(
-                    label: AppStrings.get('total_forgotten_count', lang),
-                    value: totalForgottenCount,
-                    icon: Icons.flag_outlined,
-                    color: Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _SummaryTile(
                     label: AppStrings.get('active_error_words', lang),
                     value: activeErrorWordCount,
                     icon: Icons.bookmark_outline,
-                    color: theme.colorScheme.primary,
+                    color: Colors.red,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -162,16 +162,27 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
                     label: AppStrings.get('active_forgotten_words', lang),
                     value: activeForgottenWordCount,
                     icon: Icons.flag,
-                    color: Colors.deepOrange,
+                    color: Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SummaryTile(
+                    label: AppStrings.get('active_cue_memory_words', lang),
+                    value: activeCueMemoryWordCount,
+                    icon: Icons.bookmark_added_outlined,
+                    color: theme.colorScheme.tertiary,
                   ),
                 ),
               ],
             ),
           ),
           TabBar(
+            isScrollable: true,
             tabs: [
               Tab(text: AppStrings.get('error_collection', lang)),
               Tab(text: AppStrings.get('forgotten_collection', lang)),
+              Tab(text: AppStrings.get('cue_memory_collection', lang)),
               Tab(text: AppStrings.get('learning_stats', lang)),
             ],
           ),
@@ -212,13 +223,21 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
                       ),
                 isLoading
                     ? _LoadingReviewTab(label: AppStrings.get('loading', lang))
+                    : _ReviewWordListSection(
+                        emptyLabel: AppStrings.get('no_review_data', lang),
+                        words: data.activeCueMemoryWords,
+                        collectionType: ReviewCollectionType.cueMemory,
+                        lang: lang,
+                      ),
+                isLoading
+                    ? _LoadingReviewTab(label: AppStrings.get('loading', lang))
                     : _ReviewStatsSection(
                         words: data.allWords,
                         sortMode: sortMode,
                         lang: lang,
-                        onSortModeChanged: (mode) => ref
-                            .read(reviewSortModeProvider.notifier)
-                            .state = mode,
+                        onSortModeChanged: (mode) =>
+                            ref.read(reviewSortModeProvider.notifier).state =
+                                mode,
                       ),
               ],
             ),
@@ -233,6 +252,7 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
     WidgetRef ref,
     AsyncValue<List<WordBook>> booksAsync,
     int? selectedBookId,
+    DateTime selectedDate,
     String lang,
   ) {
     final books = booksAsync.valueOrNull ?? const <WordBook>[];
@@ -242,13 +262,12 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
         child: Text(AppStrings.get('all_books', lang)),
       ),
       ...books.map(
-        (book) => DropdownMenuItem<int?>(
-          value: book.id,
-          child: Text(book.name),
-        ),
+        (book) =>
+            DropdownMenuItem<int?>(value: book.id, child: Text(book.name)),
       ),
     ];
-    if (selectedBookId != null && books.every((book) => book.id != selectedBookId)) {
+    if (selectedBookId != null &&
+        books.every((book) => book.id != selectedBookId)) {
       options.add(
         DropdownMenuItem<int?>(
           value: selectedBookId,
@@ -261,7 +280,7 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
       children: [
         Expanded(
           child: DropdownButtonFormField<int?>(
-            value: selectedBookId,
+            initialValue: selectedBookId,
             isExpanded: true,
             decoration: InputDecoration(
               labelText: AppStrings.get('selected_book', lang),
@@ -276,6 +295,27 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
           ),
         ),
         const SizedBox(width: 12),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: selectedDate,
+              firstDate: DateTime(2020),
+              lastDate: DateTime.now(),
+            );
+            if (picked == null) return;
+            ref.read(reviewSelectedDateProvider.notifier).state = DateTime(
+              picked.year,
+              picked.month,
+              picked.day,
+            );
+          },
+          icon: const Icon(Icons.calendar_today_outlined),
+          label: Text(
+            '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+          ),
+        ),
+        const SizedBox(width: 8),
         OutlinedButton.icon(
           onPressed: () {
             ref.invalidate(reviewBooksProvider);
@@ -297,14 +337,305 @@ class _ReviewCenterScreenState extends ConsumerState<ReviewCenterScreen> {
     required int? bookId,
   }) {
     if (words.isEmpty) return;
-    ref.read(reviewPracticeSessionProvider.notifier).state =
-        ReviewPracticeSession(
-          collectionType: collectionType,
-          bookId: bookId,
-          mode: mode,
-          words: words,
-        );
+    ref
+        .read(reviewPracticeSessionProvider.notifier)
+        .state = ReviewPracticeSession(
+      collectionType: collectionType,
+      bookId: bookId,
+      mode: mode,
+      words: words,
+    );
     context.push('/review-center/quiz');
+  }
+
+  Widget _buildDashboardOverview(
+    BuildContext context,
+    ReviewDashboardData data,
+    String lang,
+    ThemeData theme,
+  ) {
+    final recordedListReviews = data.listReviews
+        .where((item) => item.practiceCount > 0)
+        .toList();
+    return SizedBox(
+      height: 218,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        children: [
+          SizedBox(
+            width: 360,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.get('review_list_progress', lang),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: recordedListReviews.isEmpty
+                          ? Center(
+                              child: Text(
+                                AppStrings.get('no_lists_yet', lang),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: recordedListReviews.length,
+                              itemBuilder: (context, index) {
+                                final item = recordedListReviews[index];
+                                final accuracy = item.totalAnswerCount == 0
+                                    ? AppStrings.get('not_available', lang)
+                                    : '${(item.accuracy * 100).round()}%';
+                                return ExpansionTile(
+                                  dense: true,
+                                  tilePadding: EdgeInsets.zero,
+                                  leading: Icon(
+                                    item.metPassThreshold
+                                        ? Icons.check_circle
+                                        : Icons.radio_button_unchecked,
+                                    color: item.metPassThreshold
+                                        ? Colors.green
+                                        : theme.colorScheme.outline,
+                                    size: 20,
+                                  ),
+                                  title: Text(
+                                    item.list.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    AppStrings.get(
+                                      'review_list_stats',
+                                      lang,
+                                      params: {
+                                        'sessions': item.practiceCount
+                                            .toString(),
+                                        'covered': item.coveredWordCount
+                                            .toString(),
+                                        'total': item.totalWordCount.toString(),
+                                      },
+                                    ),
+                                  ),
+                                  trailing: Text(accuracy),
+                                  children: [
+                                    if (item.words.isEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          8,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            AppStrings.get(
+                                              'review_no_word_details',
+                                              lang,
+                                            ),
+                                            style: theme.textTheme.bodySmall,
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      for (final word in item.words)
+                                        ListTile(
+                                          dense: true,
+                                          contentPadding: const EdgeInsets.only(
+                                            left: 32,
+                                          ),
+                                          title: Text(word.word.english),
+                                          subtitle: Text(
+                                            AppStrings.get(
+                                              'review_word_detail',
+                                              lang,
+                                              params: {
+                                                'answers': word.answerCount
+                                                    .toString(),
+                                                'correct': word.correctCount
+                                                    .toString(),
+                                                'incorrect': word.incorrectCount
+                                                    .toString(),
+                                              },
+                                            ),
+                                          ),
+                                          trailing: Icon(
+                                            word.latestCorrect == true
+                                                ? Icons.check_circle_outline
+                                                : Icons.cancel_outlined,
+                                            color: word.latestCorrect == true
+                                                ? Colors.green
+                                                : Colors.red,
+                                            size: 18,
+                                          ),
+                                        ),
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 330,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.get('review_ai_analysis', lang),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    for (final type in const [
+                      LearningActivityType.aiLearning,
+                      LearningActivityType.dialogue,
+                      LearningActivityType.skill,
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                AppStrings.get('review_ai_type_$type', lang),
+                              ),
+                            ),
+                            Text(
+                              '${data.aiSummary.completedCount(type)} · ${data.aiSummary.involvedWordCount(type)}',
+                              style: theme.textTheme.labelLarge,
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (data.aiSummary.aiLearningQuestionCount > 0)
+                      Text(
+                        AppStrings.get(
+                          'review_ai_questions',
+                          lang,
+                          params: {
+                            'questions': data.aiSummary.aiLearningQuestionCount
+                                .toString(),
+                            'accuracy':
+                                '${(data.aiSummary.aiLearningAccuracy * 100).round()}%',
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    if (data.aiSummary.dialogueTurnCount > 0)
+                      Text(
+                        AppStrings.get(
+                          'review_dialogue_metrics',
+                          lang,
+                          params: {
+                            'turns': data.aiSummary.dialogueTurnCount
+                                .toString(),
+                            'used': data.aiSummary.dialogueTargetWordUseCount
+                                .toString(),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    if (data.aiSummary.skillRunCount > 0)
+                      Text(
+                        AppStrings.get(
+                          'review_skill_metrics',
+                          lang,
+                          params: {
+                            'runs': data.aiSummary.skillRunCount.toString(),
+                          },
+                        ),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    const Spacer(),
+                    Text(
+                      data.aiSummary.focusWords.isEmpty
+                          ? AppStrings.get('review_focus_words_empty', lang)
+                          : AppStrings.get(
+                              'review_focus_words',
+                              lang,
+                              params: {
+                                'words': data.aiSummary.focusWords
+                                    .take(4)
+                                    .map((item) => item.word.english)
+                                    .join(', '),
+                              },
+                            ),
+                      style: theme.textTheme.bodySmall,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 260,
+            child: Card(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.45,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.record_voice_over_outlined, size: 26),
+                    const SizedBox(height: 10),
+                    Text(
+                      AppStrings.get('speaking_check', lang),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(AppStrings.get('coming_soon', lang)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MigrationNotice extends StatelessWidget {
+  final String lang;
+  final VoidCallback onDismiss;
+
+  const _MigrationNotice({required this.lang, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialBanner(
+      content: Text(AppStrings.get('review_data_reset_notice', lang)),
+      leading: const Icon(Icons.info_outline),
+      actions: [
+        TextButton(
+          onPressed: onDismiss,
+          child: Text(AppStrings.get('dismiss', lang)),
+        ),
+      ],
+    );
   }
 }
 
@@ -355,7 +686,9 @@ class _SummaryTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.55,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -388,14 +721,14 @@ class _ReviewWordListSection extends StatelessWidget {
   final ReviewCollectionType collectionType;
   final String emptyLabel;
   final String lang;
-  final ValueChanged<ReviewQuizMode> onPractice;
+  final ValueChanged<ReviewQuizMode>? onPractice;
 
   const _ReviewWordListSection({
     required this.words,
     required this.collectionType,
     required this.emptyLabel,
     required this.lang,
-    required this.onPractice,
+    this.onPractice,
   });
 
   @override
@@ -404,27 +737,29 @@ class _ReviewWordListSection extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
-              onPressed: words.isEmpty
-                  ? null
-                  : () => onPractice(ReviewQuizMode.choice),
-              icon: const Icon(Icons.touch_app_outlined),
-              label: Text(AppStrings.get('review_choice', lang)),
-            ),
-            OutlinedButton.icon(
-              onPressed: words.isEmpty
-                  ? null
-                  : () => onPractice(ReviewQuizMode.fill),
-              icon: const Icon(Icons.edit_outlined),
-              label: Text(AppStrings.get('review_fill', lang)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        if (onPractice != null) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: words.isEmpty
+                    ? null
+                    : () => onPractice!(ReviewQuizMode.choice),
+                icon: const Icon(Icons.touch_app_outlined),
+                label: Text(AppStrings.get('review_choice', lang)),
+              ),
+              OutlinedButton.icon(
+                onPressed: words.isEmpty
+                    ? null
+                    : () => onPractice!(ReviewQuizMode.fill),
+                icon: const Icon(Icons.edit_outlined),
+                label: Text(AppStrings.get('review_fill', lang)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         if (words.isEmpty)
           _EmptyReviewState(label: emptyLabel)
         else
@@ -521,9 +856,16 @@ class _ReviewWordCard extends StatelessWidget {
     final theme = Theme.of(context);
     final word = stat.word;
     final subtitle = word.chineseMeanings;
-    final primaryCount = collectionType == ReviewCollectionType.forgotten
-        ? stat.forgottenCount
-        : stat.errorCount;
+    final primaryCount = switch (collectionType) {
+      ReviewCollectionType.errors => stat.errorCount,
+      ReviewCollectionType.forgotten => stat.forgottenCount,
+      ReviewCollectionType.cueMemory => stat.cueMemoryCount,
+    };
+    final collectionColor = switch (collectionType) {
+      ReviewCollectionType.errors => Colors.red,
+      ReviewCollectionType.forgotten => Colors.deepOrange,
+      ReviewCollectionType.cueMemory => theme.colorScheme.tertiary,
+    };
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -535,9 +877,7 @@ class _ReviewWordCard extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: collectionType == ReviewCollectionType.forgotten
-                    ? Colors.orange.withValues(alpha: 0.12)
-                    : Colors.red.withValues(alpha: 0.12),
+                color: collectionColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Center(
@@ -545,9 +885,7 @@ class _ReviewWordCard extends StatelessWidget {
                   '$primaryCount',
                   style: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: collectionType == ReviewCollectionType.forgotten
-                        ? Colors.deepOrange
-                        : Colors.red,
+                    color: collectionColor,
                   ),
                 ),
               ),
@@ -583,6 +921,10 @@ class _ReviewWordCard extends StatelessWidget {
                         label: AppStrings.get('forgotten_count_label', lang),
                         value: stat.forgottenCount,
                       ),
+                      _CountChip(
+                        label: AppStrings.get('cue_memory_count_label', lang),
+                        value: stat.cueMemoryCount,
+                      ),
                     ],
                   ),
                 ],
@@ -610,10 +952,7 @@ class _CountChip extends StatelessWidget {
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        '$label $value',
-        style: theme.textTheme.labelSmall,
-      ),
+      child: Text('$label $value', style: theme.textTheme.labelSmall),
     );
   }
 }

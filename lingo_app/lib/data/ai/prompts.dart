@@ -5,27 +5,39 @@ import '../models/ai_models.dart';
 class AiPrompts {
   AiPrompts._();
 
-  static String collocationsPrompt(List<String> words) {
-    final wordList = words.map((w) => '- $w').join('\n');
+  static String collocationsPrompt(
+    List<String> words, {
+    Map<String, String> targetMeanings = const {},
+  }) {
+    final vocabulary = const JsonEncoder.withIndent('  ').convert([
+      for (final word in words)
+        {
+          'word': word,
+          'dictionary_chinese_meanings': targetMeanings[word] ?? '',
+        },
+    ]);
     return '''You are an English language teacher helping students learn vocabulary through collocations.
 
-For each of the following words, generate exactly 3 common, useful English collocation chunks (固定搭配).
+For each vocabulary record below, generate exactly 3 common, useful English collocation chunks (固定搭配).
 
 A collocation is a natural combination of words that native speakers commonly use together. Types include:
 - adjective + noun (e.g., heavy traffic, strong coffee)
 - verb + noun (e.g., make a decision, take a photo)
 - noun + verb (e.g., war breaks out, the wind blows)
 - adverb + adjective (e.g., deeply disappointed, bitterly cold)
-- verb + preposition / phrasal verb (e.g., look forward to, give up)
 
 Rules:
 - Vary the three entries in structure, context, and partner words whenever possible.
 - Prefer useful chunks of 2-5 words. An extended chunk such as "make an informed decision" is welcome when natural.
-- Do not return a bare dictionary definition, a full sentence, an idiom/proverb, or a generic template repeated for every word.
-- Each chunk must contain the original target word in the same spelling.
+- The dictionary_chinese_meanings field is the vocabulary sense the learner is studying. Use only one of those senses for the target word.
+- Prefer transparent lexical collocations whose Chinese translation makes that target-word sense explicit. The translation must include the provided Chinese meaning itself or a directly derived phrase, such as "野鸭" for the meaning "鸭".
+- Never use an idiom, slang, proverb, figurative phrasal verb, or opaque fixed expression when its natural Chinese translation hides the target word's studied meaning.
+- For example, when duck means "鸭；鸭子；鸭肉", return entries such as "wild duck" or "roast duck". Never return "duck out of" with a translation such as "逃避".
+- Do not return a bare dictionary definition, a full sentence, or a generic template repeated for every word.
+- Each chunk must contain the original target word in the same spelling, and chinese_translation must explain the same studied sense.
 
-Words to generate collocations for:
-$wordList
+Vocabulary records to generate collocations for:
+$vocabulary
 
 Return ONLY a JSON array in this format:
 [

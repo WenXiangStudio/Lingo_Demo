@@ -94,6 +94,7 @@ class DeepPracticeState {
   final String? answerEvaluationErrorDetail;
   final bool isSaving;
   final bool hasSaved;
+  final int? activityId;
   final bool collocationOptionValidationEnabled;
 
   const DeepPracticeState({
@@ -115,6 +116,7 @@ class DeepPracticeState {
     this.answerEvaluationErrorDetail,
     this.isSaving = false,
     this.hasSaved = false,
+    this.activityId,
     this.collocationOptionValidationEnabled = true,
   });
 
@@ -161,6 +163,7 @@ class DeepPracticeState {
     String? answerEvaluationErrorDetail,
     bool? isSaving,
     bool? hasSaved,
+    int? activityId,
     bool? collocationOptionValidationEnabled,
     bool clearGenerationError = false,
     bool clearAnswerEvaluationError = false,
@@ -192,6 +195,7 @@ class DeepPracticeState {
           : (answerEvaluationErrorDetail ?? this.answerEvaluationErrorDetail),
       isSaving: isSaving ?? this.isSaving,
       hasSaved: hasSaved ?? this.hasSaved,
+      activityId: activityId ?? this.activityId,
       collocationOptionValidationEnabled:
           collocationOptionValidationEnabled ??
           this.collocationOptionValidationEnabled,
@@ -205,7 +209,7 @@ final deepPracticeProvider =
     });
 
 class DeepPracticeNotifier extends StateNotifier<DeepPracticeState> {
-  static const _collocationContentType = 'collocation_v2';
+  static const _collocationContentType = 'collocation_v3';
   static const _sentenceContentType = 'sentence_v2';
   static const _idiomContentType = 'idiom_v1';
   static const _commonDistractorWords = <String>[
@@ -293,6 +297,15 @@ class DeepPracticeNotifier extends StateNotifier<DeepPracticeState> {
       return;
     }
 
+    final activityId = await _ref
+        .read(learningActivityRepositoryProvider)
+        .startActivity(
+          activityType: LearningActivityType.aiLearning,
+          subtype: mode,
+          listIds: uniqueListIds,
+          wordIds: words.map((word) => word.id).toList(),
+        );
+
     state = DeepPracticeState(
       phase: DeepPracticePhase.setup,
       mode: mode,
@@ -301,6 +314,7 @@ class DeepPracticeNotifier extends StateNotifier<DeepPracticeState> {
       words: words,
       sourceListIds: sourceListIds,
       totalToGenerate: words.length,
+      activityId: activityId,
     );
   }
 
@@ -340,7 +354,13 @@ class DeepPracticeNotifier extends StateNotifier<DeepPracticeState> {
           final batchWords = uncachedWords.skip(i).take(batchSize).toList();
           final batch = batchWords.map((word) => word.english).toList();
           if (contentType == _collocationContentType) {
-            final collocations = await provider.generateCollocations(batch);
+            final collocations = await provider.generateCollocations(
+              batch,
+              targetMeanings: {
+                for (final word in batchWords)
+                  word.english: word.chineseMeanings,
+              },
+            );
             await _cacheCollocations(
               aiContentRepo,
               batchWords,
@@ -997,6 +1017,7 @@ class DeepPracticeNotifier extends StateNotifier<DeepPracticeState> {
         final sessionId = await repo.createSession(
           listId: entry.key,
           mode: state.mode!,
+          sessionKind: PracticeSessionKind.aiLearning,
           totalCount: records.length,
           correctCount: correctCount,
           accuracy: records.isEmpty ? 0 : correctCount / records.length,
@@ -1023,15 +1044,58 @@ class DeepPracticeNotifier extends StateNotifier<DeepPracticeState> {
           }
         }
       }
+      final usage = <int, int>{};
+      for (final record in state.answeredRecords) {
+        usage.update(record.wordId, (value) => value + 1, ifAbsent: () => 1);
+      }
+      if (state.activityId != null) {
+        await _ref
+            .read(learningActivityRepositoryProvider)
+            .completeActivity(
+              state.activityId!,
+              subtype: state.mode,
+              questionCount: state.answeredCount,
+              correctCount: state.correctCount,
+              accuracy: state.accuracy,
+              involvedWordCount: usage.length,
+              wordIds: usage.keys.toList(),
+              errorWordIds: state.answeredRecords
+                  .where((record) => record.shouldRecordError)
+                  .map((record) => record.wordId)
+                  .toList(),
+              wordUsageCounts: usage,
+            );
+      }
       _ref.invalidate(listOverviewProvider);
       state = state.copyWith(isSaving: false, hasSaved: true);
     } catch (_) {
+      if (state.activityId != null) {
+        await _ref
+            .read(learningActivityRepositoryProvider)
+            .abandonActivity(state.activityId!);
+      }
       if (mounted) state = state.copyWith(isSaving: false);
     }
   }
 
   void reset() {
+    final activityId = state.activityId;
+    if (activityId != null && !state.hasSaved) {
+      _ref
+          .read(learningActivityRepositoryProvider)
+          .abandonActivity(activityId)
+          .ignore();
+    }
     state = const DeepPracticeState();
+  }
+
+  Future<void> abandonActivity() async {
+    final activityId = state.activityId;
+    if (activityId == null || state.hasSaved) return;
+    await _ref
+        .read(learningActivityRepositoryProvider)
+        .abandonActivity(activityId);
+    if (mounted) state = state.copyWith(hasSaved: true);
   }
 }
 

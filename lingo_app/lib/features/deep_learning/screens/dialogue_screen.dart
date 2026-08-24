@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/i18n/app_strings.dart';
 import '../../../core/services/tts_providers.dart';
@@ -84,6 +85,14 @@ class _DialogueScreenState extends ConsumerState<DialogueScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: AppStrings.get('back_home', lang),
+          onPressed: () async {
+            await ref.read(dialogueProvider.notifier).abandonActivity();
+            if (context.mounted) context.go('/');
+          },
+        ),
         title: Text(AppStrings.get('ai_dialogue_title', lang)),
         actions: [
           if (canToggleTranslation)

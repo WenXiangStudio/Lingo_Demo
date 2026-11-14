@@ -1,5 +1,6 @@
 import '../repositories/repositories.dart';
 import '../models/ai_models.dart';
+import '../models/narration_ai_models.dart';
 import 'ai_provider.dart';
 import 'adapters/claude_adapter.dart';
 import 'adapters/openai_compatible.dart';
@@ -17,14 +18,25 @@ class AiService {
     final apiKey = await _settingsRepo.getAiApiKey();
     final baseUrl = await _settingsRepo.getAiBaseUrl();
     final model = await _settingsRepo.getAiModel();
+    final thinkingEnabled = await _settingsRepo.getAiThinkingEnabled();
 
     if (apiKey == null || apiKey.isEmpty) {
       throw AiException('Please configure your AI API key in Settings.');
     }
 
     final providerType = AiProviderType.fromString(type ?? 'claude');
+    final resolvedModel = _resolveModel(providerType, model);
+    if (resolvedModel != model && resolvedModel != null) {
+      await _settingsRepo.setAiModel(resolvedModel);
+    }
     _cached = _UsageTrackingAiProvider(
-      _createProvider(providerType, apiKey, baseUrl: baseUrl, model: model),
+      _createProvider(
+        providerType,
+        apiKey,
+        baseUrl: baseUrl,
+        model: resolvedModel,
+        thinkingEnabled: thinkingEnabled,
+      ),
       _settingsRepo,
     );
     return _cached!;
@@ -35,6 +47,7 @@ class AiService {
     String apiKey, {
     String? baseUrl,
     String? model,
+    bool thinkingEnabled = true,
   }) {
     switch (type) {
       case AiProviderType.claude:
@@ -63,8 +76,10 @@ class AiService {
               ? baseUrl
               : 'https://api.deepseek.com',
           apiKey: apiKey,
-          model: (model != null && model.isNotEmpty) ? model : 'deepseek-chat',
+          model: (model != null && model.isNotEmpty) ? model : 'deepseek-flash',
           useJsonObjectForCollocationValidation: true,
+          supportsThinkingToggle: true,
+          thinkingEnabled: thinkingEnabled,
         );
       case AiProviderType.kimi:
         return OpenAICompatibleAdapter(
@@ -89,6 +104,15 @@ class AiService {
 
   void clearCache() {
     _cached = null;
+  }
+
+  static String? _resolveModel(AiProviderType type, String? model) {
+    final value = model?.trim();
+    if (type != AiProviderType.deepseek) return value;
+    return switch (value) {
+      null || '' || 'deepseek-chat' || 'deepseek-v4-flash' => 'deepseek-flash',
+      _ => value,
+    };
   }
 }
 
@@ -206,6 +230,50 @@ class _UsageTrackingAiProvider implements AiProvider {
   @override
   Future<String> generateScenario(String word, String meaning) async {
     final result = await _inner.generateScenario(word, meaning);
+    await _recordLastUsage();
+    return result;
+  }
+
+  @override
+  Future<NarrationTargetDraft> generateNarrationTarget({
+    required String transcript,
+    required String chineseTranslation,
+    required String accent,
+    required String register,
+    bool? thinkingEnabled,
+  }) async {
+    final result = await _inner.generateNarrationTarget(
+      transcript: transcript,
+      chineseTranslation: chineseTranslation,
+      accent: accent,
+      register: register,
+      thinkingEnabled: thinkingEnabled,
+    );
+    await _recordLastUsage();
+    return result;
+  }
+
+  @override
+  Future<NarrationAnalysis> analyseNarration({
+    required String rawTranscript,
+    required String cleanedTranscript,
+    required String chineseTranslation,
+    required String targetEnglish,
+    required String accent,
+    required String register,
+    required List<Map<String, dynamic>> existingLearningItems,
+    bool? thinkingEnabled,
+  }) async {
+    final result = await _inner.analyseNarration(
+      rawTranscript: rawTranscript,
+      cleanedTranscript: cleanedTranscript,
+      chineseTranslation: chineseTranslation,
+      targetEnglish: targetEnglish,
+      accent: accent,
+      register: register,
+      existingLearningItems: existingLearningItems,
+      thinkingEnabled: thinkingEnabled,
+    );
     await _recordLastUsage();
     return result;
   }

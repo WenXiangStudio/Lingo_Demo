@@ -1,4 +1,5 @@
 import '../models/ai_models.dart';
+import '../models/narration_ai_models.dart';
 
 abstract class AiProvider {
   String get providerName;
@@ -54,6 +55,25 @@ abstract class AiProvider {
   /// Generate ONE scenario example sentence for a single word.
   /// Each call is fully isolated — no context leaks between words.
   Future<String> generateScenario(String word, String meaning);
+
+  Future<NarrationTargetDraft> generateNarrationTarget({
+    required String transcript,
+    required String chineseTranslation,
+    required String accent,
+    required String register,
+    bool? thinkingEnabled,
+  });
+
+  Future<NarrationAnalysis> analyseNarration({
+    required String rawTranscript,
+    required String cleanedTranscript,
+    required String chineseTranslation,
+    required String targetEnglish,
+    required String accent,
+    required String register,
+    required List<Map<String, dynamic>> existingLearningItems,
+    bool? thinkingEnabled,
+  });
 }
 
 class AiUsage {
@@ -63,6 +83,21 @@ class AiUsage {
   const AiUsage({required this.inputTokens, required this.outputTokens});
 
   int get totalTokens => inputTokens + outputTokens;
+}
+
+/// Thrown when the provider stopped generating because the output token budget
+/// ran out. Reasoning tokens are billed against the same budget, so a reasoning
+/// model can exhaust it before any JSON is produced.
+class AiOutputTruncatedException implements Exception {
+  const AiOutputTruncatedException({this.outputTokens});
+
+  /// Reported completion tokens, when the provider returned usage data.
+  final int? outputTokens;
+
+  @override
+  String toString() =>
+      'AiOutputTruncatedException: AI output stopped at the token limit'
+      '${outputTokens == null ? '' : ' ($outputTokens tokens)'}';
 }
 
 /// The types of AI providers supported.

@@ -304,4 +304,224 @@ Return ONLY a JSON object:
   ]
 }''';
   }
+
+  static String narrationTargetPrompt({
+    required String transcript,
+    required String chineseTranslation,
+    required String accent,
+    required String register,
+  }) {
+    final input = jsonEncode({
+      'corrected_or_user_cleaned_transcript': transcript,
+      'user_confirmed_chinese_intent': chineseTranslation,
+      'accent': accent,
+      'register': register,
+    });
+    return '''You are preparing the English intent anchor for a spoken-English learner.
+
+The user-confirmed Chinese translation is the ONLY authority for intended meaning. English grammar, usage, collocation, spelling and naturalness are judged only by English rules. Do not silently reconcile a serious conflict between the Chinese intent and the transcript: report it for user confirmation.
+
+Input:
+$input
+
+Requirements:
+- Produce one main recommended English rendering of every idea in the confirmed Chinese material.
+- Default to idiomatic British English and a natural spoken register unless the input explicitly requests another accent or register.
+- Preserve tone, emphasis and reasonable personal speaking style. Do not turn ordinary speech into academic prose.
+- You may provide at most two genuinely useful acceptable alternatives. Explain only their material difference (wording, order, tone or formality).
+- A Chinese word or short phrase embedded in otherwise English speech is evidence of missing English vocabulary, not an error by itself.
+- Set conflict_detected when transcript and Chinese intent differ materially. Explain the exact conflict without guessing which is right.
+
+Mandatory output-language contract:
+- All user-facing analysis or explanatory prose MUST be written in Simplified Chinese, regardless of the app interface language.
+- In this response, alternatives[].difference and conflict_message MUST be Simplified Chinese.
+- Keep recommended and alternatives[].text in English because they are English expressions being learned.
+- Do not return English explanatory prose in any Chinese-required field.
+
+Return ONLY this JSON object:
+{
+  "recommended": "<complete target English expression>",
+  "alternatives": [
+    {"text": "<acceptable alternative in English>", "difference": "<用简体中文说明差异>"}
+  ],
+  "conflict_detected": false,
+  "conflict_message": "<如有冲突，用简体中文说明；否则为空>",
+  "needs_user_confirmation": false
+}''';
+  }
+
+  static String narrationAnalysisPrompt({
+    required String rawTranscript,
+    required String cleanedTranscript,
+    required String chineseTranslation,
+    required String targetEnglish,
+    required String accent,
+    required String register,
+    required List<Map<String, dynamic>> existingLearningItems,
+  }) {
+    final input = const JsonEncoder.withIndent('  ').convert({
+      'raw_transcript': rawTranscript,
+      'user_cleaned_transcript': cleanedTranscript,
+      'user_confirmed_chinese_intent': chineseTranslation,
+      'user_confirmed_target_english': targetEnglish,
+      'accent': accent,
+      'register': register,
+      'existing_learning_items': existingLearningItems,
+    });
+    return '''You are the deterministic analysis engine for a spoken-English learning product. Analyse the supplied record completely and return structured data only.
+
+Two-track standard:
+1. The user-confirmed Chinese material is the ONLY authority for what the user intended.
+2. English rules are the ONLY authority for whether the English form is correct and idiomatic.
+
+Mandatory output-language contract:
+- ALL user-facing analysis, diagnosis, reasons, explanations, notes, labels and self-check prose MUST be written in Simplified Chinese, regardless of the app interface language.
+- The following fields MUST be Simplified Chinese whenever non-empty:
+  sentence_pairs[].differences[].reason;
+  errors[].issue and errors[].reason;
+  collected_words[].part_of_speech and collected_words[].note;
+  knowledge_points[].title and knowledge_points[].explanation;
+  speech_features[].type and speech_features[].note;
+  acceptable_variants[].difference;
+  self_check.checks[].detail, self_check.modifications[], self_check.uncertainties[], self_check.target_difference and self_check.naturalness_basis.
+- Keep raw/cleaned/original English spans, corrected English spans, target expressions, corrected_expression, acceptable_variants[].text, collected_words[].english, stable keys and exact evidence in their source/English form.
+- Do not return English explanatory prose in any Chinese-required field. English linguistic tokens such as “a/an”, quoted source words or corrected example fragments may appear inside an otherwise Chinese explanation when necessary.
+
+Input:
+$input
+
+Alignment and cleaning:
+- Preserve raw_transcript conceptually; never rewrite it in place.
+- Build normalized_transcript by removing meaningless repetitions, fillers and abandoned fragments when safe.
+- Keep emphatic repetition. For self-correction, keep the final intended part but analyse the discarded error when useful.
+- Align against both Chinese intent and the confirmed target English.
+
+Error analysis:
+- List EVERY A, B and C issue. A blocks understanding or changes core meaning. B is a clear grammar/usage error. C is grammatical but unnatural or worth optimising. Keep C separate through its grade.
+- Never list D-level spoken phenomena (fillers, pauses, meaningless repetition, self-correction) as errors. Put them only in speech_features.
+- A Chinese substitute itself is NOT an error and must not be described as code-switching, spelling, grammar or usage error.
+- English grammar around a substitute is still analysed using the intended English replacement. Example: "a 苹果" yields apple in collected_words and an a/an B error.
+- Sort errors by grade A, B, C, then communication impact, recurrence, relation to a Chinese substitute, and foundational impact.
+
+Word collection:
+- Collect a Chinese word or short/fixed phrase used where English was intended. Use the British-English lemma as stable_key.
+- Do not collect an entire Chinese sentence; the target expression handles it.
+- Function words, proper nouns, numbers and time expressions are allowed and must have a category.
+- Do not force a translation for a Chinese particle with no English equivalent.
+- Do not collect redundant Chinese repetition after an already correct English word unless the evidence clearly shows replacement intent.
+
+Knowledge points:
+- Include only points directly driven by an error, collected word, or C-level optimisation. Do not decompose every correct target sentence.
+- Deduplicate by stable_key. Levels: core, related, extended. Core is review-required; related/extended are optional and normally review_required=false.
+- D-level speech features are never formal knowledge points and never review tasks.
+
+Corrected expression and self-check:
+- Produce one main corrected_expression faithful to Chinese intent, English rules and the user's reasonable spoken style.
+- Default to idiomatic British spoken English.
+- Optionally give at most two acceptable variants with a short material distinction.
+- Internally self-check semantics, form, naturalness, consistency with target English, and preservation of style. Correct problems and iterate at most three times.
+- Report all five checks. If still uncertain after three iterations, set needs_user_confirmation and describe the uncertainty; do not fabricate certainty.
+
+Real-use detection:
+- Compare this natural, unprompted narration with existing_learning_items.
+- Emit success only when an existing item is used spontaneously, correctly and naturally.
+- Emit failure when a known word is again replaced in Chinese or a known knowledge error clearly recurs.
+- No mention means no event. Do not treat a forced, unnatural insertion as success.
+
+Metrics:
+- english_word_count counts English words in normalized_transcript.
+- sentence_count counts meaningful spoken sentences.
+- chinese_substitute_count counts only collected substitutes, not whole Chinese sentences.
+- complexity is a conservative 0-100 structural indicator used only for trends, never an absolute ability score.
+
+Return ONLY this JSON object, with empty arrays rather than omitted fields:
+{
+  "normalized_transcript": "<clean aligned transcript>",
+  "sentence_pairs": [
+    {
+      "original": "<original sentence>",
+      "corrected": "<corrected sentence>",
+      "differences": [
+        {
+          "original": "<changed or empty span>",
+          "corrected": "<replacement or empty span>",
+          "type": "chinese_substitute|grammar|addition|deletion|naturalness",
+          "reason": "<用简体中文简要解释原因>"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "grade": "A|B|C",
+      "original": "<source span or sentence>",
+      "issue": "<用简体中文说明具体问题>",
+      "correction": "<correct expression>",
+      "reason": "<用简体中文解释修改原因>",
+      "sentence_index": 0
+    }
+  ],
+  "collected_words": [
+    {
+      "stable_key": "<British lemma or canonical phrase>",
+      "chinese": "<exact substitute>",
+      "english": "<context-correct English>",
+      "part_of_speech": "<用简体中文写词性>",
+      "category": "word|phrase|function_word|proper_noun|number|time",
+      "note": "<用简体中文写简短语境说明>"
+    }
+  ],
+  "knowledge_points": [
+    {
+      "stable_key": "<short stable snake_case identifier>",
+      "title": "<用简体中文概括知识点，可保留必要的英文术语>",
+      "explanation": "<用简体中文解释相关知识>",
+      "level": "core|related|extended",
+      "source": "error|word|optimisation",
+      "review_required": true,
+      "error_grade": "A|B|C|"
+    }
+  ],
+  "speech_features": [
+    {"type": "<用简体中文写D级口语现象>", "example": "<source span>", "note": "<用简体中文写简短说明>"}
+  ],
+  "corrected_expression": "<main recommendation>",
+  "acceptable_variants": [
+    {"text": "<English variant>", "difference": "<用简体中文说明措辞、语序、语气或正式程度差异>"}
+  ],
+  "self_check": {
+    "iterations": 1,
+    "needs_user_confirmation": false,
+    "checks": [
+      {"key": "semantics", "passed": true, "detail": "<用简体中文说明检查结果>"},
+      {"key": "form", "passed": true, "detail": "<用简体中文说明检查结果>"},
+      {"key": "naturalness", "passed": true, "detail": "<用简体中文说明检查结果>"},
+      {"key": "consistency", "passed": true, "detail": "<用简体中文说明检查结果>"},
+      {"key": "style", "passed": true, "detail": "<用简体中文说明检查结果>"}
+    ],
+    "modifications": ["<用简体中文说明自检时所做修改>"],
+    "uncertainties": [],
+    "target_difference": "<用简体中文说明与目标表达的显著差异；无差异则为空>",
+    "naturalness_basis": "<用简体中文简述英式口语地道性依据>"
+  },
+  "metrics": {
+    "english_word_count": 0,
+    "sentence_count": 0,
+    "chinese_substitute_count": 0,
+    "error_a_count": 0,
+    "error_b_count": 0,
+    "error_c_count": 0,
+    "complexity": 0
+  },
+  "real_usage_events": [
+    {
+      "item_type": "word|knowledge",
+      "stable_key": "<existing stable_key only>",
+      "outcome": "success|failure",
+      "evidence": "<exact evidence>",
+      "guided": false
+    }
+  ]
+}''';
+  }
 }

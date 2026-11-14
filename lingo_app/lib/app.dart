@@ -26,6 +26,11 @@ import 'features/speaking/screens/speaking_practice_screen.dart';
 import 'features/skills/screens/skills_screen.dart';
 import 'features/labs/present_tense_diagnosis/screens/present_tense_diagnosis_lab_screen.dart';
 import 'features/phonetics/screens/phonetics_screen.dart';
+import 'features/narration/screens/narration_home_screen.dart';
+import 'features/narration/screens/narration_flow_screen.dart';
+import 'features/narration/screens/narration_library_screen.dart';
+import 'features/narration/screens/narration_review_screen.dart';
+import 'features/narration/screens/narration_progress_screen.dart';
 
 List<int> _deepPracticeListIds(GoRouterState state, int fallbackListId) {
   final raw = state.uri.queryParameters['listIds'];
@@ -215,6 +220,28 @@ final _routerProvider = Provider<GoRouter>((ref) {
               state.uri.queryParameters['returnPath'] ?? '/list/$listId';
           return SpeakingPracticeScreen(listId: listId, returnPath: returnPath);
         },
+      ),
+      GoRoute(
+        path: '/narration',
+        builder: (context, state) => const NarrationHomeScreen(),
+      ),
+      GoRoute(
+        path: '/narration/new',
+        builder: (context, state) => NarrationFlowScreen(
+          sessionId: int.tryParse(state.uri.queryParameters['sessionId'] ?? ''),
+        ),
+      ),
+      GoRoute(
+        path: '/narration/library',
+        builder: (context, state) => const NarrationLibraryScreen(),
+      ),
+      GoRoute(
+        path: '/narration/review',
+        builder: (context, state) => const NarrationReviewScreen(),
+      ),
+      GoRoute(
+        path: '/narration/progress',
+        builder: (context, state) => const NarrationProgressScreen(),
       ),
     ],
   );

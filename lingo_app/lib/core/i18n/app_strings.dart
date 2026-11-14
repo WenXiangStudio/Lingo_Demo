@@ -1218,6 +1218,13 @@ class AppStrings {
           'Uses an extra AI call to verify multiple-choice distractors. Turn it off to save time and tokens; collocations will use fill-in questions.',
       'zh': '额外调用 AI 校验选择题干扰项。关闭可节省时间和 Token；搭配题将以填空题呈现。',
     },
+    'ai_thinking_enabled': {'en': 'Enable model reasoning', 'zh': '启用模型思考'},
+    'ai_thinking_enabled_desc': {
+      'en':
+          'Default for new narrations. Turning it off makes analysis much faster and cheaper, but the model reasons less. Only applies to DeepSeek models; Claude always reasons.',
+      'zh':
+          '新建口语自述时的默认值。关闭后分析会快很多、也更省 Token，但模型推理更少。仅对 DeepSeek 模型生效；Claude 始终思考。',
+    },
     'language_tool_section': {
       'en': 'LanguageTool Grammar Check',
       'zh': 'LanguageTool 语法检查',
@@ -2928,6 +2935,508 @@ class AppStrings {
       'zh': '对话继续失败：{error}',
     },
     'ai_dialogue_btn': {'en': 'AI Dialogue', 'zh': 'AI 对话'},
+
+    // ─── Spoken narration analysis ───
+    'narration_title': {'en': 'Spoken Narration', 'zh': '英语口语自述'},
+    'narration_home_desc': {
+      'en':
+          'Tell a story freely, confirm your intent, and turn the analysis into lasting learning.',
+      'zh': '自由口述、确认表达意图，并把分析结果沉淀为长期学习内容。',
+    },
+    'narration_new': {'en': 'New Narration', 'zh': '新建口语自述'},
+    'narration_home_heading': {
+      'en': 'Speak, understand, improve',
+      'zh': '开口表达，理解差异，持续进步',
+    },
+    'narration_home_intro': {
+      'en':
+          'Your original words stay intact. Confirm the Chinese intent and target English before the app analyses errors, missing vocabulary and useful knowledge points.',
+      'zh': '原始口述会完整保留。确认中文意图和目标英文后，应用才会分析错误、欠缺词汇和相关知识点。',
+    },
+    'narration_sessions': {'en': 'Narrations', 'zh': '自述'},
+    'narration_words': {'en': 'Words', 'zh': '单词'},
+    'narration_knowledge': {'en': 'Knowledge', 'zh': '知识点'},
+    'narration_due': {'en': 'Due', 'zh': '待复习'},
+    'narration_review': {'en': 'Review', 'zh': '复习'},
+    'narration_library': {'en': 'Learning Library', 'zh': '学习库'},
+    'narration_progress': {'en': 'Progress', 'zh': '进步追踪'},
+    'narration_recent': {'en': 'Recent Narrations', 'zh': '最近自述'},
+    'narration_no_sessions': {
+      'en': 'No narration yet. Start with a short account of your day.',
+      'zh': '还没有口语自述。可以先从简短讲述今天开始。',
+    },
+    'narration_load_failed': {
+      'en': 'Narration data could not be loaded.',
+      'zh': '无法加载口语自述数据。',
+    },
+    'narration_status_transcript_review': {
+      'en': 'Transcript to confirm',
+      'zh': '待确认转写',
+    },
+    'narration_status_translation': {
+      'en': 'Chinese intent needed',
+      'zh': '待提交中文意图',
+    },
+    'narration_status_target_review': {
+      'en': 'Target English to confirm',
+      'zh': '待确认目标英文',
+    },
+    'narration_status_analysed': {
+      'en': 'Final correction to confirm',
+      'zh': '待确认最终正确式',
+    },
+    'narration_status_confirmed': {
+      'en': 'Saved to learning library',
+      'zh': '已存入学习库',
+    },
+    'narration_input_heading': {
+      'en': 'Tell your story in English',
+      'zh': '用英语自由讲述',
+    },
+    'narration_input_intro': {
+      'en':
+          'Speak naturally. You may use a Chinese word or short phrase when you do not know its English expression.',
+      'zh': '自然表达即可。不知道某个英文单词或短语时，可以直接用中文替代。',
+    },
+    'narration_tap_record': {'en': 'Tap to start', 'zh': '点击开始录音'},
+    'narration_recording': {
+      'en': 'Recording… tap to finish',
+      'zh': '正在录音……点击完成',
+    },
+    'narration_retain_audio': {'en': 'Keep encrypted audio', 'zh': '保留加密音频'},
+    'narration_retain_audio_desc': {
+      'en':
+          'Off by default. Otherwise the recording is deleted immediately after transcription.',
+      'zh': '默认关闭；关闭时，录音会在转写完成后立即删除。',
+    },
+    'narration_accent': {'en': 'English variety', 'zh': '英语变体'},
+    'narration_accent_british': {'en': 'British (default)', 'zh': '英式（默认）'},
+    'narration_accent_american': {'en': 'American', 'zh': '美式'},
+    'narration_register': {'en': 'Register', 'zh': '语域'},
+    'narration_register_spoken': {'en': 'Natural spoken', 'zh': '自然口语（默认）'},
+    'narration_register_formal': {'en': 'Formal', 'zh': '正式'},
+    'narration_register_academic': {'en': 'Academic', 'zh': '学术'},
+    'narration_thinking_toggle': {
+      'en': 'Model reasoning for this narration',
+      'zh': '本次启用模型思考',
+    },
+    'narration_thinking_toggle_desc': {
+      'en':
+          'Off gives a much faster, cheaper analysis. Compare both on the same narration to see the difference. DeepSeek only.',
+      'zh': '关闭后分析更快、更省 Token。可用同一条自述分别跑一次做对比。仅对 DeepSeek 生效。',
+    },
+    'narration_thinking_on': {'en': 'Reasoning on', 'zh': '思考：开启'},
+    'narration_thinking_off': {'en': 'Reasoning off', 'zh': '思考：关闭'},
+    'narration_analysis_elapsed': {'en': '{seconds}s', 'zh': '耗时 {seconds} 秒'},
+    'narration_manual_label': {
+      'en': 'Or paste/type a transcript',
+      'zh': '或粘贴/输入转写文本',
+    },
+    'narration_manual_hint': {
+      'en': 'Example: Yesterday I go to the 公园…',
+      'zh': '例如：Yesterday I go to the 公园…',
+    },
+    'narration_use_text': {'en': 'Use This Text', 'zh': '使用此文本'},
+    'narration_consent_title': {
+      'en': 'I agree to process this narration',
+      'zh': '我同意处理本次口语自述',
+    },
+    'narration_consent_desc': {
+      'en':
+          'The transcript, Chinese intent and analysis are stored locally. AI processing uses your configured provider. Audio is deleted after transcription unless you explicitly keep an encrypted copy.',
+      'zh': '转写、中文意图和分析结果保存在本地；AI 处理使用你配置的服务商。除非明确选择保留加密副本，否则音频会在转写后删除。',
+    },
+    'narration_transcript_heading': {
+      'en': 'Confirm the transcript and your intent',
+      'zh': '确认转写与表达意图',
+    },
+    'narration_transcript_intro': {
+      'en':
+          'The original transcript is permanent. You may remove fillers, unrelated fragments or accidental repetitions in the working copy.',
+      'zh': '原始转写会永久保留。你可以在工作副本中删除语气词、无关片段或无意义重复。',
+    },
+    'narration_raw_transcript': {'en': 'Original transcript', 'zh': '原始转写'},
+    'narration_cleaned_transcript': {
+      'en': 'User-cleaned transcript',
+      'zh': '用户清洗版转写',
+    },
+    'narration_cleanup_help': {
+      'en': 'Optional cleanup; this never changes the original transcript.',
+      'zh': '清洗为可选操作，不会改变原始转写。',
+    },
+    'narration_confidence': {'en': 'Transcript confidence', 'zh': '转写置信度'},
+    'narration_confidence_high': {'en': 'High', 'zh': '高'},
+    'narration_confidence_medium': {'en': 'Medium', 'zh': '中'},
+    'narration_confidence_low': {'en': 'Low', 'zh': '低'},
+    'narration_medium_confidence_warning': {
+      'en': 'Check uncertain words carefully before confirming.',
+      'zh': '请仔细检查不确定的词或片段后再确认。',
+    },
+    'narration_low_confidence_warning': {
+      'en':
+          'This transcript is unreliable. Correct it fully or record again before continuing.',
+      'zh': '当前转写可靠性较低。请完整修正或重新录音后再继续。',
+    },
+    'narration_confirm_transcript': {'en': 'Confirm Transcript', 'zh': '确认转写'},
+    'narration_transcript_confirmed': {
+      'en': 'Transcript Confirmed',
+      'zh': '转写已确认',
+    },
+    'narration_translation_heading': {
+      'en': 'Sentence-by-sentence Chinese intent',
+      'zh': '逐句中文意图',
+    },
+    'narration_translation_intro': {
+      'en':
+          'Required: write what every sentence was meant to express and confirm it is accurate. This is the sole authority for your intended meaning.',
+      'zh': '必填：逐句写出你真正想表达的意思，并确认准确。此材料是判断用户意图的唯一标准。',
+    },
+    'narration_translation_label': {
+      'en': 'Confirmed Chinese translation',
+      'zh': '确认后的中文翻译',
+    },
+    'narration_translation_hint': {
+      'en': 'Use one line per spoken sentence where possible.',
+      'zh': '尽量让每行中文对应一句口述。',
+    },
+    'narration_generate_target': {
+      'en': 'Confirm Intent and Generate Target English',
+      'zh': '确认意图并生成目标英文',
+    },
+    'narration_generating_target': {
+      'en': 'Generating an accurate, natural target expression…',
+      'zh': '正在生成准确、自然的目标英文表达……',
+    },
+    'narration_target_heading': {
+      'en': 'Confirm the target English',
+      'zh': '确认目标正确英文表达',
+    },
+    'narration_target_intro': {
+      'en':
+          'This becomes the English anchor for alignment and analysis. Edit it or choose an acceptable variant before continuing.',
+      'zh': '它将成为对齐与分析的英文锚点。继续前可编辑，或选择一个可接受变体。',
+    },
+    'narration_target_label': {
+      'en': 'Recommended target English',
+      'zh': '推荐目标英文',
+    },
+    'narration_variants': {'en': 'Acceptable variants', 'zh': '可接受变体'},
+    'narration_confirm_and_analyse': {
+      'en': 'Confirm and Analyse',
+      'zh': '确认并开始分析',
+    },
+    'narration_analysing': {
+      'en': 'Aligning, cleaning, analysing and self-checking…',
+      'zh': '正在对齐、清洗、分析并执行自检……',
+    },
+    'narration_result_heading': {'en': 'Narration analysis', 'zh': '口语自述分析'},
+    'narration_comparison': {'en': 'Original vs corrected', 'zh': '原口述 vs 正确式'},
+    'narration_corrected': {'en': 'Corrected expression', 'zh': '正确式'},
+    'narration_error_analysis': {'en': 'Error analysis', 'zh': '错误分析'},
+    'narration_grade_a': {
+      'en': 'A · Meaning-blocking / core errors',
+      'zh': 'A级 · 阻断理解/核心错误',
+    },
+    'narration_grade_b': {
+      'en': 'B · Clear grammar / usage errors',
+      'zh': 'B级 · 明显语法/用法错误',
+    },
+    'narration_grade_c': {
+      'en': 'C · Naturalness improvements',
+      'zh': 'C级 · 不地道/可优化',
+    },
+    'narration_no_errors': {
+      'en': 'No A, B or C issues were found.',
+      'zh': '未发现 A、B、C 级问题。',
+    },
+    'narration_collected_words': {
+      'en': 'Collected words and phrases',
+      'zh': '单词与短语收集',
+    },
+    'narration_none': {'en': 'None this time.', 'zh': '本次没有。'},
+    'narration_knowledge_summary': {'en': 'Knowledge summary', 'zh': '知识点汇总'},
+    'narration_knowledge_core': {'en': 'Core', 'zh': '核心知识点'},
+    'narration_knowledge_related': {'en': 'Related', 'zh': '关联知识点'},
+    'narration_knowledge_extended': {'en': 'Extended', 'zh': '拓展知识点'},
+    'narration_self_check': {'en': 'Correction self-check', 'zh': '正确式自检'},
+    'narration_check_semantics': {'en': 'Meaning', 'zh': '语义一致'},
+    'narration_check_form': {'en': 'English form', 'zh': '英文形式'},
+    'narration_check_naturalness': {'en': 'Naturalness', 'zh': '地道性'},
+    'narration_check_consistency': {
+      'en': 'Target consistency',
+      'zh': '目标表达一致性',
+    },
+    'narration_check_style': {'en': 'Personal style', 'zh': '用户风格保留'},
+    'narration_self_check_iterations': {
+      'en': 'Self-check iterations: {count}',
+      'zh': '自检迭代次数：{count}',
+    },
+    'narration_target_details': {
+      'en': 'Target English details',
+      'zh': '目标正确英文表达详情',
+    },
+    'narration_final_expression': {
+      'en': 'Final corrected expression',
+      'zh': '最终口述材料正确式',
+    },
+    'narration_confirm_final': {
+      'en': 'Confirm and Save Learning Items',
+      'zh': '确认并存入学习库',
+    },
+    'narration_saved_to_library': {
+      'en': 'Saved to Learning Library',
+      'zh': '已存入学习库',
+    },
+    'narration_learning_saved_desc': {
+      'en':
+          'Words and core knowledge points now follow spaced review and real-use tracking.',
+      'zh': '单词和核心知识点现已进入间隔复习与真实使用追踪。',
+    },
+    'narration_delete_title': {'en': 'Delete this narration?', 'zh': '删除本次自述？'},
+    'narration_delete_body': {
+      'en':
+          'The narration, logs, analysis and retained audio will be deleted. Previously merged learning items remain in the learning library.',
+      'zh': '本次自述、日志、分析和保留音频将被删除；此前合并进学习库的条目仍会保留。',
+    },
+    'narration_play_audio': {'en': 'Play retained audio', 'zh': '回听保留音频'},
+    'narration_audio_play_failed': {
+      'en': 'The retained audio could not be played: {error}',
+      'zh': '无法播放保留音频：{error}',
+    },
+    'narration_export': {'en': 'Export My Data', 'zh': '导出我的数据'},
+    'narration_exported_to': {
+      'en': 'Narration data exported to {path}',
+      'zh': '口语自述数据已导出到 {path}',
+    },
+    'narration_export_failed': {
+      'en': 'Data export failed: {error}',
+      'zh': '数据导出失败：{error}',
+    },
+    'narration_delete_all': {
+      'en': 'Delete All Narration Data',
+      'zh': '删除全部口语自述数据',
+    },
+    'narration_delete_all_title': {
+      'en': 'Delete all narration data?',
+      'zh': '删除全部口语自述数据？',
+    },
+    'narration_delete_all_body': {
+      'en':
+          'This permanently deletes all narrations, transcripts, analyses, learning items, reviews, progress, logs, consent records and retained audio. This cannot be undone.',
+      'zh': '这将永久删除所有自述、转写、分析、学习条目、复习、进步数据、日志、同意记录和保留音频，且无法撤销。',
+    },
+    'narration_all_deleted': {
+      'en': 'All narration data was deleted.',
+      'zh': '全部口语自述数据已删除。',
+    },
+    'narration_ai_not_configured': {
+      'en':
+          'Configure an AI API key in Settings before generating or analysing.',
+      'zh': '请先在设置中配置 AI API 密钥，再生成或分析。',
+    },
+    'narration_ai_auth_failed': {
+      'en':
+          'The AI service rejected the saved API key. Check the provider and API key in Settings, then try again.',
+      'zh': 'AI 服务拒绝了当前 API 密钥。请在设置中检查服务商和 API 密钥后重试。',
+    },
+    'narration_ai_balance_insufficient': {
+      'en': 'The AI account does not have enough balance for this request.',
+      'zh': '当前 AI 账户余额不足，无法完成本次请求。',
+    },
+    'narration_ai_rate_limited': {
+      'en':
+          'The AI service is receiving too many requests. Wait briefly and try again.',
+      'zh': 'AI 服务请求过于频繁，请稍等片刻后重试。',
+    },
+    'narration_ai_model_unavailable': {
+      'en':
+          'The configured AI model is unavailable. Choose an available model in Settings and try again.',
+      'zh': '当前配置的 AI 模型不可用。请在设置中选择可用模型后重试。',
+    },
+    'narration_ai_timeout': {
+      'en':
+          'The AI request timed out. Your confirmed Chinese intent was kept; try again when the connection is stable.',
+      'zh': 'AI 请求超时。已保留你确认的中文意图，请在网络稳定后重试。',
+    },
+    'narration_ai_connection_failed': {
+      'en':
+          'Could not connect to the AI service. Your confirmed Chinese intent was kept.',
+      'zh': '无法连接 AI 服务。已保留你确认的中文意图。',
+    },
+    'narration_ai_request_failed': {
+      'en':
+          'The AI service could not complete this request. Your confirmed Chinese intent was kept; review the AI settings and retry.',
+      'zh': 'AI 服务未能完成本次请求。已保留你确认的中文意图，请检查 AI 设置后重试。',
+    },
+    'narration_ai_response_invalid': {
+      'en':
+          'The AI response was incomplete or malformed. Your confirmed Chinese intent was kept; try again.',
+      'zh': 'AI 返回内容不完整或格式无效。已保留你确认的中文意图，请重试。',
+    },
+    'narration_ai_output_truncated': {
+      'en':
+          'The AI analysis was cut off before it finished. Your confirmed Chinese intent was kept; try again, or shorten this narration.',
+      'zh': 'AI 分析结果在输出上限处被截断。已保留你确认的中文意图，请重试，或缩短本次自述内容。',
+    },
+    'narration_target_empty': {
+      'en': 'The AI returned no target expression. Try again.',
+      'zh': 'AI 未返回目标表达，请重试。',
+    },
+    'narration_analysis_empty': {
+      'en': 'The AI returned no usable analysis. Try again.',
+      'zh': 'AI 未返回可用分析，请重试。',
+    },
+    'narration_analysis_missing': {
+      'en': 'No completed analysis is available for this narration.',
+      'zh': '本次自述还没有完成分析。',
+    },
+    'narration_session_missing': {
+      'en': 'This narration could not be found.',
+      'zh': '找不到本次自述记录。',
+    },
+    'narration_audio_key_missing': {
+      'en': 'The encryption key for this retained audio is unavailable.',
+      'zh': '用于该保留音频的加密密钥不可用。',
+    },
+    'narration_unknown_error': {
+      'en': 'The narration action failed: {error}',
+      'zh': '口语自述操作失败：{error}',
+    },
+    'narration_word_library': {'en': 'Words', 'zh': '单词库'},
+    'narration_knowledge_library': {'en': 'Knowledge', 'zh': '知识点库'},
+    'narration_library_empty': {
+      'en': 'Nothing has been collected here yet.',
+      'zh': '这里还没有已收录内容。',
+    },
+    'narration_part_of_speech': {'en': 'Part of speech', 'zh': '词性'},
+    'narration_level': {'en': 'Level', 'zh': '级别'},
+    'narration_item_stats': {
+      'en':
+          'Seen {appearances} times · Real-use success {successes} · failure {failures}',
+      'zh': '出现 {appearances} 次 · 真实使用成功 {successes} 次 · 失败 {failures} 次',
+    },
+    'narration_optional_review': {
+      'en': 'Optional: this item is not forced into the review queue.',
+      'zh': '可选内容：不会强制进入复习队列。',
+    },
+    'narration_mark_known': {'en': 'I Already Know This', 'zh': '我已经会了'},
+    'narration_marked_known': {'en': 'Marked as Known', 'zh': '已标记为会'},
+    'narration_mark_known_title': {
+      'en': 'Lower the review frequency?',
+      'zh': '降低复习频率？',
+    },
+    'narration_mark_known_body': {
+      'en':
+          'Your confirmation will be recorded and this item will be reviewed less often. It is not marked fully mastered until you use it naturally and correctly in a future narration.',
+      'zh': '系统会记录你的确认并降低该条目的复习频率。只有后续在自然口述中正确使用，才会标记为完全掌握。',
+    },
+    'narration_feedback_saved': {
+      'en': 'Your feedback was saved.',
+      'zh': '你的反馈已保存。',
+    },
+    'narration_feedback_title': {'en': 'Review this judgement', 'zh': '复核此判断'},
+    'narration_feedback_reason': {
+      'en': 'Your reason or preferred result (optional)',
+      'zh': '你的理由或期望结果（可选）',
+    },
+    'narration_feedback_accept_explanation': {
+      'en': 'Accept Explanation',
+      'zh': '接受解释',
+    },
+    'narration_feedback_submit_objection': {
+      'en': 'Keep My Objection',
+      'zh': '坚持异议',
+    },
+    'narration_raise_objection': {
+      'en': 'Question This Result',
+      'zh': '对此结果提出异议',
+    },
+    'narration_feedback_target_explanation': {
+      'en':
+          'The target follows your confirmed Chinese intent and selected English variety. You remain the final authority on intended meaning and tone.',
+      'zh': '目标表达依据你确认的中文意图和所选英语变体生成；表达意图和语气最终仍以你的确认为准。',
+    },
+    'narration_feedback_error_explanation': {
+      'en':
+          'A/B/C grades follow fixed English rules and communication impact. Chinese substitutes themselves are never counted as errors.',
+      'zh': 'A/B/C 分级依据固定英文规则和沟通影响；中文替代词本身绝不会被计为错误。',
+    },
+    'narration_feedback_word_explanation': {
+      'en':
+          'Only Chinese words or short phrases used in place of intended English are collected. Whole Chinese sentences are excluded.',
+      'zh': '只收集原本应使用英文、却以中文代替的单词或短语；完整中文句子不会进入单词库。',
+    },
+    'narration_feedback_knowledge_explanation': {
+      'en':
+          'Knowledge points are limited to this narration’s errors, missing vocabulary and naturalness improvements; already-correct basics are excluded.',
+      'zh': '知识点仅来自本次错误、欠缺词汇和地道性优化；已正确的基础结构不会被全量罗列。',
+    },
+    'narration_feedback_correction_explanation': {
+      'en':
+          'The correction is checked for meaning, form, naturalness, target consistency and preservation of your reasonable spoken style.',
+      'zh': '正确式已检查语义、形式、地道性、目标一致性，以及是否保留了你合理的口语风格。',
+    },
+    'narration_mastery_new': {'en': 'New', 'zh': '新收录'},
+    'narration_mastery_reviewing': {'en': 'Reviewing', 'zh': '复习中'},
+    'narration_mastery_pending_verification': {
+      'en': 'Awaiting real use',
+      'zh': '待验证',
+    },
+    'narration_mastery_mastered': {'en': 'Mastered', 'zh': '已掌握'},
+    'narration_mastery_suspected_forgotten': {
+      'en': 'Possibly forgotten',
+      'zh': '疑似遗忘',
+    },
+    'narration_mastery_stable': {'en': 'Stable', 'zh': '稳定掌握'},
+    'narration_mastery_needs_revalidation': {
+      'en': 'Recheck needed',
+      'zh': '待重新验证',
+    },
+    'narration_review_recognition': {'en': 'Recall', 'zh': '第一层：识别'},
+    'narration_review_application': {'en': 'Apply', 'zh': '第二层：应用'},
+    'narration_fix_prompt': {
+      'en': 'Explain or apply this correction: {point}',
+      'zh': '请说明或应用这个纠错点：{point}',
+    },
+    'narration_apply_prompt': {
+      'en': 'Create a new, natural sentence using: {item}',
+      'zh': '请在新语境中自然使用：{item}',
+    },
+    'narration_reveal_answer': {'en': 'Reveal Reference', 'zh': '查看参考'},
+    'narration_review_again': {'en': 'Needs Review', 'zh': '还需复习'},
+    'narration_review_passed': {'en': 'I Applied It', 'zh': '我已掌握本层'},
+    'narration_review_complete': {
+      'en':
+          'All due narration items are complete. Real mastery will be verified in future natural speech.',
+      'zh': '今天到期的口语学习内容已完成。真正掌握仍会在后续自然口述中验证。',
+    },
+    'narration_no_progress': {
+      'en': 'Confirm a completed analysis to begin progress tracking.',
+      'zh': '确认一次完整分析后即可开始进步追踪。',
+    },
+    'narration_latest_summary': {'en': 'Latest snapshot', 'zh': '最新表现概览'},
+    'narration_errors': {'en': 'A/B/C issues', 'zh': 'A/B/C 错误'},
+    'narration_real_use': {'en': 'Real-use successes', 'zh': '真实使用成功'},
+    'narration_vs_last': {
+      'en':
+          'Versus last narration: errors {errors}, English words {words}, Chinese substitutes {substitutes}.',
+      'zh': '与上次相比：错误 {errors}，英文词数 {words}，中文替代词 {substitutes}。',
+    },
+    'narration_error_trend': {'en': 'Error trend', 'zh': '错误趋势'},
+    'narration_substitute_trend': {
+      'en': 'Chinese substitute trend',
+      'zh': '中文替代词趋势',
+    },
+    'narration_length_trend': {'en': 'Narration length trend', 'zh': '口述长度趋势'},
+    'narration_complexity_trend': {
+      'en': 'Expression complexity trend',
+      'zh': '表达复杂度趋势',
+    },
+    'narration_progress_note': {
+      'en':
+          'Trends are descriptive, not an absolute score. Topic difficulty and interruptions can affect any single narration.',
+      'zh': '趋势用于描述变化，不是绝对评分；话题难度和使用中断都可能影响单次表现。',
+    },
   };
 
   static String get(String key, String lang, {Map<String, String>? params}) {

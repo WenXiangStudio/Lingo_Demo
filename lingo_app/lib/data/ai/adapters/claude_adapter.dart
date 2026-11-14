@@ -5,8 +5,24 @@ import 'package:dio/dio.dart';
 import '../ai_provider.dart';
 import '../prompts.dart';
 import '../../models/ai_models.dart';
+import '../../models/narration_ai_models.dart';
 
 class ClaudeAdapter implements AiProvider {
+  /// Narration analysis returns a large nested JSON payload, and extended
+  /// thinking tokens are drawn from the same budget as the visible answer.
+  static const int _narrationTargetMaxTokens = 4096;
+  static const int _narrationAnalysisMaxTokens = 16384;
+
+  /// Anthropic model output limits vary, so keep the escalation conservative.
+  static const int _maxRetryMaxTokens = 32768;
+
+  /// Long transcripts plus thinking can exceed the default receive timeout.
+  static const Duration _narrationReceiveTimeout = Duration(seconds: 300);
+
+  /// Claude does not honour `thinkingEnabled`. Anthropic's extended thinking
+  /// requires `temperature == 1`, while these prompts pin 0.2/0.1, so toggling
+  /// it would silently change output style instead of isolating one variable.
+  /// The narration UI states this limitation.
   final String _model;
   final Dio _dio;
   AiUsage? _lastUsage;
@@ -15,19 +31,22 @@ class ClaudeAdapter implements AiProvider {
     required String apiKey,
     String baseUrl = 'https://api.anthropic.com',
     String model = 'claude-sonnet-4-6',
+    Dio? dio,
   }) : _model = model,
-       _dio = Dio(
-         BaseOptions(
-           baseUrl: baseUrl,
-           headers: {
-             'x-api-key': apiKey,
-             'Content-Type': 'application/json',
-             'anthropic-version': '2023-06-01',
-           },
-           connectTimeout: const Duration(seconds: 30),
-           receiveTimeout: const Duration(seconds: 120),
-         ),
-       );
+       _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               baseUrl: baseUrl,
+               headers: {
+                 'x-api-key': apiKey,
+                 'Content-Type': 'application/json',
+                 'anthropic-version': '2023-06-01',
+               },
+               connectTimeout: const Duration(seconds: 30),
+               receiveTimeout: const Duration(seconds: 120),
+             ),
+           );
 
   @override
   String get providerName => 'Claude';
@@ -202,24 +221,146 @@ class ClaudeAdapter implements AiProvider {
     return (json as List).first as String;
   }
 
+  @override
+  Future<NarrationTargetDraft> generateNarrationTarget({
+    required String transcript,
+    required String chineseTranslation,
+    required String accent,
+    required String register,
+    bool? thinkingEnabled,
+  }) async {
+    final prompt = AiPrompts.narrationTargetPrompt(
+      transcript: transcript,
+      chineseTranslation: chineseTranslation,
+      accent: accent,
+      register: register,
+    );
+    final json = await _callClaude(
+      prompt,
+      temperature: 0.2,
+      maxTokens: _narrationTargetMaxTokens,
+      receiveTimeout: _narrationReceiveTimeout,
+    );
+    var result = NarrationTargetDraft.fromJson(
+      Map<String, dynamic>.from(json as Map),
+    );
+    if (!result.hasChineseExplanations) {
+      final firstUsage = _lastUsage;
+      final retryJson = await _callClaude(
+        '$prompt\n\nLANGUAGE CORRECTION: Your previous JSON used English explanatory prose. Regenerate the complete JSON. Every explanatory field specified by the mandatory output-language contract must contain Simplified Chinese. Keep only the English expressions and source spans in English.',
+        temperature: 0.1,
+        maxTokens: _narrationTargetMaxTokens,
+        receiveTimeout: _narrationReceiveTimeout,
+      );
+      _lastUsage = _combineUsage(firstUsage, _lastUsage);
+      result = NarrationTargetDraft.fromJson(
+        Map<String, dynamic>.from(retryJson as Map),
+      );
+      if (!result.hasChineseExplanations) {
+        throw const FormatException(
+          'AI target explanations were not returned in Simplified Chinese.',
+        );
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<NarrationAnalysis> analyseNarration({
+    required String rawTranscript,
+    required String cleanedTranscript,
+    required String chineseTranslation,
+    required String targetEnglish,
+    required String accent,
+    required String register,
+    required List<Map<String, dynamic>> existingLearningItems,
+    bool? thinkingEnabled,
+  }) async {
+    final prompt = AiPrompts.narrationAnalysisPrompt(
+      rawTranscript: rawTranscript,
+      cleanedTranscript: cleanedTranscript,
+      chineseTranslation: chineseTranslation,
+      targetEnglish: targetEnglish,
+      accent: accent,
+      register: register,
+      existingLearningItems: existingLearningItems,
+    );
+    final json = await _callClaude(
+      prompt,
+      temperature: 0.2,
+      maxTokens: _narrationAnalysisMaxTokens,
+      receiveTimeout: _narrationReceiveTimeout,
+    );
+    var result = NarrationAnalysis.fromJson(
+      Map<String, dynamic>.from(json as Map),
+    );
+    if (!result.hasChineseExplanations) {
+      final firstUsage = _lastUsage;
+      final retryJson = await _callClaude(
+        '$prompt\n\nLANGUAGE CORRECTION: Your previous JSON used English explanatory prose. Regenerate the complete JSON. Every explanatory, diagnostic, reason, note, knowledge and self-check field specified by the mandatory output-language contract must contain Simplified Chinese. Keep only English expressions, source spans, stable keys and exact evidence in English.',
+        temperature: 0.1,
+        maxTokens: _narrationAnalysisMaxTokens,
+        receiveTimeout: _narrationReceiveTimeout,
+      );
+      _lastUsage = _combineUsage(firstUsage, _lastUsage);
+      result = NarrationAnalysis.fromJson(
+        Map<String, dynamic>.from(retryJson as Map),
+      );
+      if (!result.hasChineseExplanations) {
+        throw const FormatException(
+          'AI analysis explanations were not returned in Simplified Chinese.',
+        );
+      }
+    }
+    return result;
+  }
+
   Future<dynamic> _callClaude(
     String userPrompt, {
     bool isRetry = false,
     bool retryOnInvalidJson = true,
+    double temperature = 0.7,
+    int maxTokens = 4096,
+    Duration? receiveTimeout,
+    bool budgetEscalated = false,
   }) async {
     final response = await _dio.post(
       '/v1/messages',
       data: {
         'model': _model,
-        'max_tokens': 4096,
-        'temperature': 0.7,
+        'max_tokens': maxTokens,
+        'temperature': temperature,
         'messages': [
           {'role': 'user', 'content': userPrompt},
         ],
       },
+      options: receiveTimeout == null
+          ? null
+          : Options(receiveTimeout: receiveTimeout),
     );
     _lastUsage = _parseUsage(response.data['usage']);
     final usage = _lastUsage;
+    final data = response.data;
+    final stopReason = data is Map ? data['stop_reason'] : null;
+    if (stopReason == 'max_tokens') {
+      final grown = maxTokens * 2;
+      if (!budgetEscalated && grown <= _maxRetryMaxTokens) {
+        // Extended thinking shares the output budget; retry once with more room
+        // before giving up on the whole narration flow.
+        final result = await _callClaude(
+          userPrompt,
+          isRetry: isRetry,
+          retryOnInvalidJson: retryOnInvalidJson,
+          temperature: temperature,
+          maxTokens: grown,
+          receiveTimeout: receiveTimeout,
+          budgetEscalated: true,
+        );
+        _lastUsage = _combineUsage(usage, _lastUsage);
+        return result;
+      }
+      throw AiOutputTruncatedException(outputTokens: usage?.outputTokens);
+    }
     try {
       return _extractJson(_responseText(response.data));
     } on FormatException {
@@ -227,6 +368,9 @@ class ClaudeAdapter implements AiProvider {
       final result = await _callClaude(
         '$userPrompt\n\nIMPORTANT: Your previous response was empty or malformed. Return only one complete valid JSON value, with no markdown or explanation.',
         isRetry: true,
+        temperature: temperature,
+        maxTokens: maxTokens,
+        receiveTimeout: receiveTimeout,
       );
       _lastUsage = _combineUsage(usage, _lastUsage);
       return result;

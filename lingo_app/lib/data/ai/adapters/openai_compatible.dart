@@ -6,12 +6,26 @@ import 'package:dio/dio.dart';
 import '../ai_provider.dart';
 import '../prompts.dart';
 import '../../models/ai_models.dart';
+import '../../models/narration_ai_models.dart';
 
 /// Base adapter for OpenAI-compatible APIs (DeepSeek, Kimi, GLM, etc.).
 class OpenAICompatibleAdapter implements AiProvider {
+  /// Narration calls are much larger than the rest of the app's requests.
+  /// Reasoning tokens are billed against `max_tokens`, so the budget must leave
+  /// room for thinking *and* the full JSON payload.
+  static const int _narrationTargetMaxTokens = 4096;
+  static const int _narrationAnalysisMaxTokens = 16384;
+  static const int _maxRetryMaxTokens = 65536;
+
+  /// A reasoning model can spend minutes on a long transcript. The default
+  /// 120s receive timeout is not enough for the analysis prompt.
+  static const Duration _narrationReceiveTimeout = Duration(seconds: 300);
+
   final String _name;
   final String _model;
   final bool _useJsonObjectForCollocationValidation;
+  final bool _supportsThinkingToggle;
+  final bool _thinkingEnabled;
   final Dio _dio;
   AiUsage? _lastUsage;
 
@@ -21,11 +35,15 @@ class OpenAICompatibleAdapter implements AiProvider {
     required String apiKey,
     required String model,
     bool useJsonObjectForCollocationValidation = false,
+    bool supportsThinkingToggle = false,
+    bool thinkingEnabled = true,
     Dio? dio,
   }) : _name = name,
        _model = model,
        _useJsonObjectForCollocationValidation =
            useJsonObjectForCollocationValidation,
+       _supportsThinkingToggle = supportsThinkingToggle,
+       _thinkingEnabled = thinkingEnabled,
        _dio =
            dio ??
            Dio(
@@ -224,6 +242,104 @@ class OpenAICompatibleAdapter implements AiProvider {
     return (json as List).first as String;
   }
 
+  @override
+  Future<NarrationTargetDraft> generateNarrationTarget({
+    required String transcript,
+    required String chineseTranslation,
+    required String accent,
+    required String register,
+    bool? thinkingEnabled,
+  }) async {
+    final prompt = AiPrompts.narrationTargetPrompt(
+      transcript: transcript,
+      chineseTranslation: chineseTranslation,
+      accent: accent,
+      register: register,
+    );
+    final json = await _callAi(
+      prompt,
+      temperature: 0.2,
+      maxTokens: _narrationTargetMaxTokens,
+      receiveTimeout: _narrationReceiveTimeout,
+      thinkingEnabled: thinkingEnabled,
+    );
+    var result = NarrationTargetDraft.fromJson(
+      Map<String, dynamic>.from(json as Map),
+    );
+    if (!result.hasChineseExplanations) {
+      final firstUsage = _lastUsage;
+      final retryJson = await _callAi(
+        '$prompt\n\nLANGUAGE CORRECTION: Your previous JSON used English explanatory prose. Regenerate the complete JSON. Every explanatory field specified by the mandatory output-language contract must contain Simplified Chinese. Keep only the English expressions and source spans in English.',
+        temperature: 0.1,
+        maxTokens: _narrationTargetMaxTokens,
+        receiveTimeout: _narrationReceiveTimeout,
+        thinkingEnabled: thinkingEnabled,
+      );
+      _lastUsage = _combineUsage(firstUsage, _lastUsage);
+      result = NarrationTargetDraft.fromJson(
+        Map<String, dynamic>.from(retryJson as Map),
+      );
+      if (!result.hasChineseExplanations) {
+        throw const FormatException(
+          'AI target explanations were not returned in Simplified Chinese.',
+        );
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<NarrationAnalysis> analyseNarration({
+    required String rawTranscript,
+    required String cleanedTranscript,
+    required String chineseTranslation,
+    required String targetEnglish,
+    required String accent,
+    required String register,
+    required List<Map<String, dynamic>> existingLearningItems,
+    bool? thinkingEnabled,
+  }) async {
+    final prompt = AiPrompts.narrationAnalysisPrompt(
+      rawTranscript: rawTranscript,
+      cleanedTranscript: cleanedTranscript,
+      chineseTranslation: chineseTranslation,
+      targetEnglish: targetEnglish,
+      accent: accent,
+      register: register,
+      existingLearningItems: existingLearningItems,
+    );
+    final json = await _callAi(
+      prompt,
+      temperature: 0.2,
+      maxTokens: _narrationAnalysisMaxTokens,
+      receiveTimeout: _narrationReceiveTimeout,
+      thinkingEnabled: thinkingEnabled,
+    );
+    var result = NarrationAnalysis.fromJson(
+      Map<String, dynamic>.from(json as Map),
+    );
+    if (!result.hasChineseExplanations) {
+      final firstUsage = _lastUsage;
+      final retryJson = await _callAi(
+        '$prompt\n\nLANGUAGE CORRECTION: Your previous JSON used English explanatory prose. Regenerate the complete JSON. Every explanatory, diagnostic, reason, note, knowledge and self-check field specified by the mandatory output-language contract must contain Simplified Chinese. Keep only English expressions, source spans, stable keys and exact evidence in English.',
+        temperature: 0.1,
+        maxTokens: _narrationAnalysisMaxTokens,
+        receiveTimeout: _narrationReceiveTimeout,
+        thinkingEnabled: thinkingEnabled,
+      );
+      _lastUsage = _combineUsage(firstUsage, _lastUsage);
+      result = NarrationAnalysis.fromJson(
+        Map<String, dynamic>.from(retryJson as Map),
+      );
+      if (!result.hasChineseExplanations) {
+        throw const FormatException(
+          'AI analysis explanations were not returned in Simplified Chinese.',
+        );
+      }
+    }
+    return result;
+  }
+
   Future<dynamic> _callAi(
     String userPrompt, {
     bool isRetry = false,
@@ -231,22 +347,38 @@ class OpenAICompatibleAdapter implements AiProvider {
     Map<String, dynamic>? responseFormat,
     double? temperature,
     int? maxTokens,
+    Duration? receiveTimeout,
     String? structuredOutputLabel,
+    bool budgetEscalated = false,
+    bool? thinkingEnabled,
   }) async {
+    final budget = maxTokens ?? 4096;
     final requestData = <String, dynamic>{
       'model': _model,
       'messages': [
         {'role': 'user', 'content': userPrompt},
       ],
       'temperature': temperature ?? 0.7,
-      'max_tokens': maxTokens ?? 4096,
+      'max_tokens': budget,
     };
     if (responseFormat != null) {
       requestData['response_format'] = responseFormat;
     }
+    // Only send the field when the model is known to support it. Reasoning is
+    // on by default, so "enabled" sends nothing and other vendors are untouched.
+    final thinking = thinkingEnabled ?? _thinkingEnabled;
+    if (_supportsThinkingToggle && !thinking) {
+      requestData['thinking'] = {'type': 'disabled'};
+    }
     late final Response<dynamic> response;
     try {
-      response = await _dio.post('/v1/chat/completions', data: requestData);
+      response = await _dio.post(
+        '/v1/chat/completions',
+        data: requestData,
+        options: receiveTimeout == null
+            ? null
+            : Options(receiveTimeout: receiveTimeout),
+      );
     } on DioException catch (error, stackTrace) {
       if (structuredOutputLabel != null) {
         developer.log(
@@ -262,6 +394,36 @@ class OpenAICompatibleAdapter implements AiProvider {
     }
     _lastUsage = _parseUsage(response.data['usage']);
     final usage = _lastUsage;
+    if (_finishReason(response.data) == 'length') {
+      final grown = budget * 2;
+      if (!budgetEscalated && grown <= _maxRetryMaxTokens) {
+        // The output budget ran out before any usable answer was produced,
+        // which reasoning tokens commonly cause. Retry once with more room
+        // instead of failing the whole narration flow.
+        developer.log(
+          '${structuredOutputLabel ?? 'request'} hit max_tokens=$budget '
+          '(completion=${usage?.outputTokens ?? 'unknown'} tokens). '
+          'Retrying once with max_tokens=$grown.',
+          name: 'LingoDemo.AI',
+          level: 900,
+        );
+        final result = await _callAi(
+          userPrompt,
+          isRetry: isRetry,
+          retryOnInvalidJson: retryOnInvalidJson,
+          responseFormat: responseFormat,
+          temperature: temperature,
+          maxTokens: grown,
+          receiveTimeout: receiveTimeout,
+          structuredOutputLabel: structuredOutputLabel,
+          budgetEscalated: true,
+          thinkingEnabled: thinkingEnabled,
+        );
+        _lastUsage = _combineUsage(usage, _lastUsage);
+        return result;
+      }
+      throw AiOutputTruncatedException(outputTokens: usage?.outputTokens);
+    }
     try {
       return _extractJson(_responseText(response.data));
     } on FormatException catch (error, stackTrace) {
@@ -282,12 +444,24 @@ class OpenAICompatibleAdapter implements AiProvider {
         retryOnInvalidJson: retryOnInvalidJson,
         responseFormat: responseFormat,
         temperature: temperature,
-        maxTokens: maxTokens,
+        maxTokens: budget,
+        receiveTimeout: receiveTimeout,
         structuredOutputLabel: structuredOutputLabel,
+        thinkingEnabled: thinkingEnabled,
       );
       _lastUsage = _combineUsage(usage, _lastUsage);
       return result;
     }
+  }
+
+  String? _finishReason(Object? responseData) {
+    if (responseData is! Map) return null;
+    final choices = responseData['choices'];
+    if (choices is! List || choices.isEmpty || choices.first is! Map) {
+      return null;
+    }
+    final reason = (choices.first as Map)['finish_reason'];
+    return reason is String ? reason : null;
   }
 
   List<dynamic> _jsonObjectItems(dynamic json) {

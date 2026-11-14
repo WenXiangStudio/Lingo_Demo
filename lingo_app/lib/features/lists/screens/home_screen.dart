@@ -19,8 +19,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _didPreloadReviewCenter = false;
-
   @override
   Widget build(BuildContext context) {
     final ref = this.ref;
@@ -69,21 +67,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
         data: (lists) {
-          _preloadReviewCenter();
           return _HomeContent(lists: lists);
         },
       ),
     );
-  }
-
-  void _preloadReviewCenter() {
-    if (_didPreloadReviewCenter) return;
-    _didPreloadReviewCenter = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.read(reviewBooksProvider.future).ignore();
-      ref.read(reviewCenterDataProvider.future).ignore();
-    });
   }
 }
 
@@ -393,6 +380,12 @@ class _HomeContent extends ConsumerWidget {
               label: AppStrings.get('speaking_practice', lang),
               detail: AppStrings.get('home_speaking_desc', lang),
               onTap: () => _openSpeakingTool(context, lang, lists),
+            ),
+            _HomeFeatureCard(
+              icon: Icons.record_voice_over_outlined,
+              label: AppStrings.get('narration_title', lang),
+              detail: AppStrings.get('narration_home_desc', lang),
+              onTap: () => context.push('/narration'),
             ),
             booksAsync.maybeWhen(
               data: (books) => books.isEmpty

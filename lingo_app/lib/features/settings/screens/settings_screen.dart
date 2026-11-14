@@ -578,6 +578,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Set<int>? _tencentWeWinnyExampleAudioReleaseListIds;
   bool _ttsDoubaoLiveApiEnabled = true;
   bool _aiCollocationOptionValidationEnabled = true;
+  bool _aiThinkingEnabled = true;
   bool _languageToolEnabled = true;
   bool _isLanguageToolTesting = false;
   String? _languageToolTestResult;
@@ -658,6 +659,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final aiModel = await settingsRepo.getAiModel();
     final aiCollocationOptionValidationEnabled = await settingsRepo
         .getAiCollocationOptionValidationEnabled();
+    final aiThinkingEnabled = await settingsRepo.getAiThinkingEnabled();
     final languageToolEnabled = await settingsRepo.getLanguageToolEnabled();
     final languageToolBaseUrl = await settingsRepo.getLanguageToolBaseUrl();
 
@@ -696,6 +698,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _aiModelController.text = aiModel ?? '';
         _aiCollocationOptionValidationEnabled =
             aiCollocationOptionValidationEnabled;
+        _aiThinkingEnabled = aiThinkingEnabled;
         _languageToolEnabled = languageToolEnabled;
         _languageToolBaseUrlController.text =
             languageToolBaseUrl ?? LanguageToolClient.defaultBaseUrl;
@@ -762,6 +765,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref
         .read(settingsRepositoryProvider)
         .setAiCollocationOptionValidationEnabled(value);
+  }
+
+  Future<void> _saveAiThinkingEnabled(bool value) async {
+    setState(() => _aiThinkingEnabled = value);
+    await ref.read(settingsRepositoryProvider).setAiThinkingEnabled(value);
+    // The adapter caches the provider, so the new value only takes effect
+    // after the cache is dropped.
+    ref.read(_aiServiceProvider).clearCache();
   }
 
   Future<void> _saveAiConfig(BuildContext context, String lang) async {
@@ -5313,6 +5324,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onChanged: _saveAiCollocationOptionValidationEnabled,
             ),
           ),
+          Card(
+            child: SwitchListTile(
+              secondary: const Icon(Icons.psychology_outlined),
+              title: Text(AppStrings.get('ai_thinking_enabled', lang)),
+              subtitle: Text(AppStrings.get('ai_thinking_enabled_desc', lang)),
+              value: _aiThinkingEnabled,
+              onChanged: _saveAiThinkingEnabled,
+            ),
+          ),
           const SizedBox(height: 16),
           _languageToolSettingsCard(theme, lang),
           const SizedBox(height: 16),
@@ -5905,7 +5925,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return switch (_selectedProvider) {
       'claude' => 'claude-sonnet-4-6',
       'openai' => 'gpt-4o',
-      'deepseek' => 'deepseek-chat',
+      'deepseek' => 'deepseek-flash',
       'kimi' => 'moonshot-v1-8k',
       'glm' => 'glm-4-flash',
       _ => 'gpt-4o',

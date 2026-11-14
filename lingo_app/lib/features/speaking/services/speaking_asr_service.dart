@@ -55,6 +55,7 @@ class SpeakingAsrService {
     if (normalized.isEmpty) return 'en';
     final primary = normalized.split(RegExp(r'[-_]')).first;
     return switch (primary) {
+      'auto' => 'auto',
       'zh' || 'cmn' => 'zh',
       'ja' => 'ja',
       'ko' => 'ko',

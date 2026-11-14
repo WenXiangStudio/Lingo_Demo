@@ -232,6 +232,224 @@ class TtsCacheRecords extends Table {
   List<String> get customConstraints => ['UNIQUE(provider, language, text)'];
 }
 
+class NarrationSessions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get status => text()();
+  TextColumn get rawTranscript => text()();
+  TextColumn get cleanedTranscript => text().nullable()();
+  TextColumn get transcriptConfidence =>
+      text().withDefault(const Constant('medium'))();
+  TextColumn get uncertainSegmentsJson =>
+      text().withDefault(const Constant('[]'))();
+  TextColumn get chineseTranslation => text().nullable()();
+  BoolColumn get translationConfirmed =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get targetEnglish => text().nullable()();
+  TextColumn get targetAlternativesJson =>
+      text().withDefault(const Constant('[]'))();
+  BoolColumn get targetConfirmed =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get normalizedTranscript => text().nullable()();
+  TextColumn get analysisJson => text().nullable()();
+  TextColumn get correctedExpression => text().nullable()();
+  TextColumn get finalExpression => text().nullable()();
+  BoolColumn get finalConfirmed =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get audioPath => text().nullable()();
+  BoolColumn get audioRetained =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get accent => text().withDefault(const Constant('british'))();
+  TextColumn get speechRegister =>
+      text().withDefault(const Constant('spoken'))();
+  BoolColumn get thinkingEnabled =>
+      boolean().withDefault(const Constant(true))();
+  IntColumn get analysisDurationMs => integer().nullable()();
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  String get tableName => 'narration_sessions';
+}
+
+class NarrationTranscriptionLogs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get sessionId => integer().references(
+    NarrationSessions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  TextColumn get rawTranscript => text()();
+  TextColumn get correctedTranscript => text().nullable()();
+  TextColumn get confidence => text()();
+  TextColumn get uncertainSegmentsJson => text()();
+  TextColumn get confirmationResult => text()();
+  BoolColumn get rerecorded => boolean().withDefault(const Constant(false))();
+  TextColumn get alignmentStatus => text().nullable()();
+  TextColumn get manualCleanupJson => text().nullable()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  String get tableName => 'narration_transcription_logs';
+}
+
+class NarrationSelfCheckLogs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get sessionId => integer().references(
+    NarrationSessions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  TextColumn get reportJson => text()();
+  IntColumn get iterationCount => integer()();
+  BoolColumn get passed => boolean()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  String get tableName => 'narration_self_check_logs';
+}
+
+class NarrationFeedbackLogs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get sessionId => integer().nullable().references(
+    NarrationSessions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get learningItemId => integer().nullable()();
+  TextColumn get stage => text()();
+  TextColumn get originalJudgement => text()();
+  TextColumn get systemExplanation => text().nullable()();
+  TextColumn get userReason => text().nullable()();
+  TextColumn get resolution => text()();
+  TextColumn get customResult => text().nullable()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  String get tableName => 'narration_feedback_logs';
+}
+
+class NarrationLearningItems extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get itemType => text()();
+  TextColumn get stableKey => text()();
+  TextColumn get english => text()();
+  TextColumn get chinese => text()();
+  TextColumn get partOfSpeech => text().withDefault(const Constant(''))();
+  TextColumn get classification => text().withDefault(const Constant(''))();
+  TextColumn get knowledgeLevel => text().withDefault(const Constant(''))();
+  TextColumn get explanation => text().withDefault(const Constant(''))();
+  BoolColumn get reviewRequired =>
+      boolean().withDefault(const Constant(true))();
+  IntColumn get firstSeenAt => integer()();
+  IntColumn get lastSeenAt => integer()();
+  IntColumn get occurrenceCount => integer().withDefault(const Constant(1))();
+  TextColumn get masteryState => text().withDefault(const Constant('new'))();
+  IntColumn get reviewPassCount => integer().withDefault(const Constant(0))();
+  BoolColumn get recognitionPassed =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get applicationPassed =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get realUseSuccessCount =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get realUseFailureCount =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get nextReviewAt => integer().nullable()();
+  IntColumn get reviewIntervalIndex =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get lastTriggerAt => integer().nullable()();
+  IntColumn get lastFailureAt => integer().nullable()();
+  TextColumn get queueState => text().withDefault(const Constant('active'))();
+  BoolColumn get userConfirmed =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get notes => text().withDefault(const Constant(''))();
+
+  @override
+  String get tableName => 'narration_learning_items';
+
+  @override
+  List<String> get customConstraints => ['UNIQUE(item_type, stable_key)'];
+}
+
+class NarrationLearningSources extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get learningItemId => integer().references(
+    NarrationLearningItems,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get sessionId => integer().references(
+    NarrationSessions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  TextColumn get sourceType => text()();
+  TextColumn get errorGrade => text().nullable()();
+  TextColumn get evidence => text().nullable()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  String get tableName => 'narration_learning_sources';
+
+  @override
+  List<String> get customConstraints => [
+    'UNIQUE(learning_item_id, session_id, source_type)',
+  ];
+}
+
+class NarrationReviewRecords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get learningItemId => integer().references(
+    NarrationLearningItems,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  TextColumn get layer => text()();
+  TextColumn get outcome => text()();
+  BoolColumn get guided => boolean().withDefault(const Constant(false))();
+  TextColumn get answer => text().nullable()();
+  TextColumn get evidence => text().nullable()();
+  IntColumn get reviewedAt => integer()();
+
+  @override
+  String get tableName => 'narration_review_records';
+}
+
+class NarrationProgressRecords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get sessionId => integer().unique().references(
+    NarrationSessions,
+    #id,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get errorACount => integer()();
+  IntColumn get errorBCount => integer()();
+  IntColumn get errorCCount => integer()();
+  IntColumn get collectedWordCount => integer()();
+  IntColumn get coreKnowledgeCount => integer()();
+  IntColumn get realUseSuccessCount => integer()();
+  IntColumn get realUseFailureCount => integer()();
+  IntColumn get englishWordCount => integer()();
+  IntColumn get sentenceCount => integer()();
+  IntColumn get chineseSubstituteCount => integer()();
+  RealColumn get complexity => real()();
+  IntColumn get createdAt => integer()();
+
+  @override
+  String get tableName => 'narration_progress_records';
+}
+
+class NarrationConsentRecords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get consentType => text()();
+  TextColumn get policyVersion => text()();
+  BoolColumn get granted => boolean()();
+  IntColumn get createdAt => integer()();
+  IntColumn get revokedAt => integer().nullable()();
+
+  @override
+  String get tableName => 'narration_consent_records';
+}
+
 abstract final class PracticeSessionKind {
   static const memorization = 'memorization';
   static const review = 'review';
@@ -530,6 +748,15 @@ class _DailyWordBuilder {
     LearningActivityWords,
     TtsUsageRecords,
     TtsCacheRecords,
+    NarrationSessions,
+    NarrationTranscriptionLogs,
+    NarrationSelfCheckLogs,
+    NarrationFeedbackLogs,
+    NarrationLearningItems,
+    NarrationLearningSources,
+    NarrationReviewRecords,
+    NarrationProgressRecords,
+    NarrationConsentRecords,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -539,7 +766,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -592,6 +819,26 @@ ON CONFLICT(`key`) DO UPDATE SET value = excluded.value
       if (from < 8) {
         await m.addColumn(listWords, listWords.isCueMemory);
         await m.addColumn(listWords, listWords.cueMemoryCount);
+      }
+      if (from < 9) {
+        await m.createTable(narrationSessions);
+        await m.createTable(narrationTranscriptionLogs);
+        await m.createTable(narrationSelfCheckLogs);
+        await m.createTable(narrationFeedbackLogs);
+        await m.createTable(narrationLearningItems);
+        await m.createTable(narrationLearningSources);
+        await m.createTable(narrationReviewRecords);
+        await m.createTable(narrationProgressRecords);
+        await m.createTable(narrationConsentRecords);
+      }
+      if (from < 10) {
+        // Additive only: existing narration rows keep reasoning on, which
+        // matches how they were produced.
+        await m.addColumn(narrationSessions, narrationSessions.thinkingEnabled);
+        await m.addColumn(
+          narrationSessions,
+          narrationSessions.analysisDurationMs,
+        );
       }
     },
     beforeOpen: (details) async {

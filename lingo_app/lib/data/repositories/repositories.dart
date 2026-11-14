@@ -386,6 +386,7 @@ class SettingsRepository {
   static const String keyAiModel = 'ai_model';
   static const String keyAiCollocationOptionValidationEnabled =
       'ai_collocation_option_validation_enabled';
+  static const String keyAiThinkingEnabled = 'ai_thinking_enabled';
   static const String keyAiLastProvider = 'ai_usage_last_provider';
   static const String keyAiLastModel = 'ai_usage_last_model';
   static const String keyAiLastInputTokens = 'ai_usage_last_input_tokens';
@@ -433,6 +434,16 @@ class SettingsRepository {
     keyAiCollocationOptionValidationEnabled,
     value ? 'true' : 'false',
   );
+
+  /// Defaults to true so the cloud model keeps its reasoning behaviour unless
+  /// the learner explicitly turns it off to compare outputs.
+  Future<bool> getAiThinkingEnabled() async {
+    final value = await getString(keyAiThinkingEnabled);
+    return value != 'false';
+  }
+
+  Future<void> setAiThinkingEnabled(bool value) =>
+      setString(keyAiThinkingEnabled, value ? 'true' : 'false');
 
   Future<void> recordAiUsage({
     required String provider,

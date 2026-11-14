@@ -26,6 +26,8 @@ dependencies:
   # HTTP
   dio: ^5.7.0
   crypto: ^3.0.6
+  cryptography: ^2.7.0
+  flutter_secure_storage: ^9.2.4
 
   # Local ASR and cloud TTS playback
   sherpa_onnx: ^1.13.0

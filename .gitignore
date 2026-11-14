@@ -9,6 +9,26 @@
 .pub-cache/
 .pub/
 
+# Local credentials
+.env
+.env.*
+!.env.example
+.aws/
+.ssh/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases and retained narration recordings
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.lingoenc
+
 # Flutter/Dart build and tooling output
 **/.dart_tool/
 **/.flutter-plugins
@@ -30,6 +50,7 @@
 *.temp
 *.swp
 .DS_Store
+__pycache__/
 
 # Local screenshots/debug artifacts
 screenshot.png
